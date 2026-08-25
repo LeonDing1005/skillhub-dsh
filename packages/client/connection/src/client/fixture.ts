@@ -2788,6 +2788,36 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           ],
         })
       },
+      communityList: request => ok(request, {
+        items: [
+          {
+            registryInstanceId: 'fixture-public', namespace: 'global', slug: 'weather', version: '1.0.0',
+            title: 'Weather', description: 'Current conditions and forecasts for any location.',
+            publisher: 'Built-in Skill Publisher', starCount: 128, downloadCount: 4820,
+            labels: ['utilities'], publishedAt: '2026-08-19T08:57:33.532872Z', isNew: true,
+          },
+          {
+            registryInstanceId: 'fixture-public', namespace: 'community', slug: 'github-pr-review', version: '2.3.1',
+            title: 'GitHub PR Review', description: 'Review pull requests against repository standards and issue intent.',
+            publisher: 'DeepSeek Community', starCount: 94, downloadCount: 3160,
+            labels: ['development'], isNew: false,
+          },
+          {
+            registryInstanceId: 'fixture-public', namespace: 'community', slug: 'research-notes', version: '1.4.0',
+            title: 'Research Notes', description: 'Collect primary-source findings into a structured Markdown brief.',
+            publisher: 'DeepSeek Community', starCount: 61, downloadCount: 1840,
+            labels: ['productivity'], isNew: false,
+          },
+        ],
+        labels: [
+          { slug: 'utilities', title: 'Utilities' },
+          { slug: 'development', title: 'Development' },
+          { slug: 'productivity', title: 'Productivity' },
+        ],
+        total: 3,
+        page: 0,
+        pageSize: 12,
+      }),
     },
     goals: {
       // Compatibility face only: old API Proxy payloads and acknowledgements
@@ -2905,6 +2935,13 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           value: { apiKeyEnv: 'DEEPSEEK_API_KEY' },
           applies: 'live',
           secrets: [{ path: ['apiKey'], set: false }],
+          revision: 0,
+        }, {
+          ns: 'ui-onboarding',
+          schema: {},
+          value: { welcomeNoticeVersion: '2026-08-13.1' },
+          applies: 'live',
+          secrets: [],
           revision: 0,
         }],
       }),
@@ -3106,6 +3143,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
+      case 'skill.communityList': return this.api.skills.communityList(request, signal)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)
       case 'agentPreset.read': return this.api.agentPresets.read(request)

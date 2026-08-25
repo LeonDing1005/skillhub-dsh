@@ -20,8 +20,8 @@ import { ThemePresenter } from './theme-presenter.ts'
 // ILayout: the ctx.layout face consumers and test fakes type against.
 // OwnerShare contracts below are the render-side halves registrants compose
 // against; the frame components and the store factory are package-internal.
-export { LayoutController } from './service.ts'
-export type { ILayout } from './service.ts'
+export { LayoutController, shellPageId } from './service.ts'
+export type { ILayout, ShellPageId } from './service.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -70,6 +70,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `session` scope, and `ctx.layout` owns whether the column is open.
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
+    /** Center-column pages that replace, but do not mutate, the conversation surface. */
+    'shell.page': { kind: 'list'; scope: 'root'; owner: ShellPageOwnerProps }
     /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
@@ -104,6 +106,12 @@ export interface ConvOwnerProps {}
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
+/** Center-page owner share; each registrant renders only for its own id. */
+export interface ShellPageOwnerProps {
+  /** The page currently selected by ctx.layout. */
+  pageId: import('./service.ts').ShellPageId
+}
+
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
 
@@ -123,6 +131,7 @@ export function apply(ctx: ClientContext): void {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
+        'shell.page': { kind: 'list', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per

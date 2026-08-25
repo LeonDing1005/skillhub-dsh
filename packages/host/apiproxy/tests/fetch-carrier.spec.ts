@@ -222,6 +222,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async list(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { skills: [{ name: 'commit-helper', description: 'Git commits', modelInvocable: true }] } } }
       },
+      async communityList(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { items: [], labels: [], total: 0, page: 0, pageSize: 12 } } }
+      },
     },
     goals: {
       async create(request) {

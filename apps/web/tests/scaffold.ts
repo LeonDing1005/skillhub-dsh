@@ -191,6 +191,13 @@ export interface LaunchOptions {
    * ordering.
    */
   extraOverlayPath?: string
+  /** Enable the shipped SkillHub adapter against a deterministic Registry Instance. */
+  skillHub?: {
+    /** Upstream HTTP endpoint used by the Host adapter. */
+    baseUrl: string
+    /** Stable Registry Instance identity projected onto every catalog item. */
+    registryInstanceId: string
+  }
   /**
    * Replay fixture (session.jsonl) served by the inserted dsh-llm-replay row
    * in replay/refresh modes; ignored in record mode (the real adapter
@@ -380,6 +387,17 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     ...basePatches,
     ...surfacePatches,
     ...extraOverlayPatches,
+    ...options.skillHub === undefined
+      ? []
+      : [{
+        id: 'skill-marketplace',
+        disabled: false,
+        config: {
+          baseUrl: options.skillHub.baseUrl,
+          registryInstanceId: options.skillHub.registryInstanceId,
+          pageSizeLimit: 20,
+        },
+      }],
     // The roster's `roots` is an assembly fact AppCLIEntry resolves and patches
     // in, exactly like `distIndex` on the webserver row — the shipped preset
     // directory sits beside the composition that names it, and no config author

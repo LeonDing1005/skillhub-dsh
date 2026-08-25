@@ -75,6 +75,8 @@ import type {} from '@deepseek-ai/dsh-commands'
 // rebuild the api-remotes cycle this direction exists to avoid.
 import type {} from '@deepseek-ai/dsh-cordis-host-runner/types'
 import type {} from '@deepseek-ai/dsh-skill'
+// Type-only: resolves the optional Host marketplace service.
+import type {} from '@deepseek-ai/dsh-skill-marketplace'
 // The settings/credentials seams: brand guards run at this wire boundary; the
 // service reads stay optional (`ctx.get`) so a composition without either
 // provider still serves every other domain.
@@ -3253,6 +3255,49 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           })
         } catch (error: unknown) {
           return err(request, { code: 'internal', message: `skill listing failed: ${String(error)}`, details: {} })
+        }
+      },
+
+      async communityList(request, signal) {
+        const marketplace = ctx.get('skillMarketplace')
+        if (marketplace === undefined) {
+          return err(request, {
+            code: 'internal',
+            message: 'Community Skills is unavailable: the Host has no configured Skill Marketplace',
+            details: {},
+          })
+        }
+        try {
+          const page = await marketplace.list(request.payload, signal)
+          return ok(request, {
+            items: page.items.map(item => ({
+              registryInstanceId: String(item.identity.registryInstanceId),
+              namespace: item.identity.namespace,
+              slug: item.identity.slug,
+              version: item.identity.version,
+              title: item.title,
+              description: item.description,
+              publisher: item.publisher,
+              starCount: item.starCount,
+              downloadCount: item.downloadCount,
+              labels: [...item.labels],
+              ...(item.publishedAt === undefined ? {} : { publishedAt: item.publishedAt }),
+              isNew: item.isNew,
+            })),
+            labels: page.labels.map(label => ({ slug: label.slug, title: label.title })),
+            total: page.total,
+            page: page.page,
+            pageSize: page.pageSize,
+          })
+        } catch (error: unknown) {
+          if (signal?.aborted === true) {
+            return err(request, { code: 'cancelled', message: 'Community Skills listing was aborted', details: {} })
+          }
+          return err(request, {
+            code: 'internal',
+            message: `Community Skills listing failed: ${String(error)}`,
+            details: {},
+          })
         }
       },
     },
