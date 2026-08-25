@@ -2,6 +2,20 @@
 
 DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub issues/specs: `LeonDing1005/skillhub-dsh`; [configuration](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Canonical labels: [configuration](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context glossary and Agent Notes: [configuration](docs/agents/domain.md).
+
 ## Pre-release stance: foundation over blast radius
 
 **Remove this section at the first tagged release.** With no external consumers, prefer the correct foundation over compatibility shims: rename or repackage freely and update every reference together. Backends reject old on-disk formats. SQLite uses monotonic `SCHEMA_VERSION`; `dsh-session` keeps `SESSION_FORMAT_VERSION` at `0` with no compatibility promise.
@@ -81,7 +95,7 @@ pnpm run demo:acp       # ACP automation server (needs DEEPSEEK_API_KEY)
 
 ### Host sandbox failures
 
-When required `gh`, `pnpm`, build, test, or generator commands fail because the agent sandbox blocks credentials, network, IPC, file watching, or nested `sandbox-exec`, retry unchanged with the narrowest host escalation before diagnosing authentication or project failure. Require sandbox evidence; never bypass genuine test failures or the product sandbox under test.
+Retry required commands unchanged with the narrowest host escalation only after sandbox evidence; never bypass genuine test failures or the product sandbox under test.
 
 ### Run relevant checks locally
 
