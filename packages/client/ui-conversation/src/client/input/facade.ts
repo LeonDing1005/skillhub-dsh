@@ -87,6 +87,10 @@ export class SessionInputShell implements SessionInput {
   private lastDraft = ''
   private imageIds: readonly DraftAttachmentId[] = []
   private disposed = false
+  private selection: EditSelection = { start: 0, end: 0 }
+  private composerFocus: ((selection: EditSelection, complete: () => void) => void) | undefined
+  private pendingComposerFocus = false
+  private composerFocusRev = 0
   /** Draft persistence mirror (chat store write; receives the clipboard projection, never raw placeholders). */
   private mirrorFn: ((text: string) => void) | undefined
 
@@ -338,6 +342,72 @@ export class SessionInputShell implements SessionInput {
   }
 
   /**
+   * Save the textarea selection for a later programmatic edit.
+   * @param selection - current textarea selection.
+   */
+  rememberSelection(selection: EditSelection): void {
+    this.selection = selection
+  }
+
+  /**
+   * Build a Skill-token edit at the saved textarea selection.
+   * @param name - canonical Skill name without the leading slash.
+   * @returns literal replacement, CAS span, and resulting collapsed selection.
+   */
+  skillTokenEdit(name: string): {
+    text: string
+    span: TokenSpan
+    selection: EditSelection
+  } {
+    const snapshot = this.core.state
+    const start = Math.min(this.selection.start, snapshot.draft.length)
+    const end = Math.max(start, Math.min(this.selection.end, snapshot.draft.length))
+    const needsLeadingSpace = start > 0 && !/\s/u.test(snapshot.draft[start - 1]!)
+    const text = `${needsLeadingSpace ? ' ' : ''}/${name} `
+    const caret = start + text.length
+    return {
+      text,
+      span: { start, end, draftRev: snapshot.draftRev },
+      selection: { start: caret, end: caret },
+    }
+  }
+
+  /**
+   * Focus the mounted composer at a selection, or retain the intent until it mounts.
+   * @param selection - selection to restore after focusing.
+   */
+  focusComposer(selection: EditSelection): void {
+    this.selection = selection
+    this.pendingComposerFocus = true
+    this.composerFocusRev += 1
+    this.requestComposerFocus()
+  }
+
+  /**
+   * Bind the mounted textarea's focus operation.
+   * @param focus - operation that focuses, restores a selection, and confirms
+   * completion after the target textarea accepted the request.
+   * @returns disposer for this exact binding.
+   */
+  bindComposer(focus: (selection: EditSelection, complete: () => void) => void): () => void {
+    this.composerFocus = focus
+    this.requestComposerFocus()
+    return () => {
+      if (this.composerFocus === focus) this.composerFocus = undefined
+    }
+  }
+
+  /** Dispatch the retained focus intent to the currently mounted composer. */
+  private requestComposerFocus(): void {
+    const focus = this.composerFocus
+    if (!this.pendingComposerFocus || focus === undefined) return
+    const rev = this.composerFocusRev
+    focus(this.selection, () => {
+      if (rev === this.composerFocusRev) this.pendingComposerFocus = false
+    })
+  }
+
+  /**
    * Surface a notice from outside the machine (detached command results).
    * @param level - severity tier.
    * @param text - notice body.
@@ -352,6 +422,8 @@ export class SessionInputShell implements SessionInput {
   /** Teardown: abort any in-flight attempt and stop accepting async settlements. */
   dispose(): void {
     this.disposed = true
+    this.composerFocus = undefined
+    this.pendingComposerFocus = false
     this.run(this.core.dispatch({ type: 'release' }))
   }
 

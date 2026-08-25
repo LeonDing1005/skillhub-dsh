@@ -100,6 +100,15 @@ export interface InputNotice {
 export interface ComposerKeyboard {
   /** Live machine state for event-handler reads (render reads go through useInput). */
   readonly snapshot: InputState
+  /** Save the textarea selection for a later programmatic composer edit. */
+  rememberSelection(selection: EditSelection): void
+  /**
+   * Bind the mounted textarea focus operation.
+   * @param focus - operation that focuses, restores a selection, and confirms
+   * completion only after the target textarea accepted the request.
+   * @returns disposer for this exact binding.
+   */
+  bindComposer(focus: (selection: EditSelection, complete: () => void) => void): () => void
   /** Draft write with the DOM-observed edit shape (narrows occurrence math). */
   setDraft(text: string, editRange?: EditRange): void
   /** Submit with an explicit delivery mode resolved by the keyboard policy. */

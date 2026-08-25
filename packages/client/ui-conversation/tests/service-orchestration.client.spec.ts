@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { QueuedMessage, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
+import { InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { ComposerBlockRegistry } from '../src/client/input/blocks.ts'
 import { InputHub } from '../src/client/input/hub.ts'
 import { ConversationController, UnsupportedImageMediaTypeError } from '../src/client/service.ts'
@@ -23,6 +24,7 @@ async function bench(readAttachment?: SessionFace['readAttachment']) {
     id: 's1',
     session: { prompt, updateQueue, cancel, loadOlder, ...(readAttachment === undefined ? {} : { readAttachment }) },
   })
+  await runtime.ctx.plugin(InputTriggerService).await()
   // config.input is required (the apply shares its hub with the inject
   // factories); the bench passes its own instance explicitly.
   const hub = new InputHub(runtime.ctx, makeTranslate(zh, {}))
@@ -48,6 +50,88 @@ describe('ConversationController', () => {
     expect(b.updateQueue).toHaveBeenCalledWith('item-1', { kind: 'remove' })
     expect(b.cancel).toHaveBeenCalledOnce()
     expect(b.loadOlder).toHaveBeenCalledOnce()
+    await b.runtime.dispose()
+  })
+
+  it('inserts a Skill token at the saved composer selection without submitting', async () => {
+    const b = await bench()
+    const focus = vi.fn((_selection: unknown, complete: () => void) => { complete() })
+    b.shell.setDraft('alphaomega')
+    b.shell.rememberSelection({ start: 5, end: 5 })
+    b.shell.bindComposer(focus)
+
+    b.scoped.insertSkillToken('review')
+
+    expect(b.shell.snapshot.draft).toBe('alpha /review omega')
+    expect(focus).toHaveBeenCalledWith({ start: 14, end: 14 }, expect.any(Function))
+    expect(b.prompt).not.toHaveBeenCalled()
+    await b.runtime.dispose()
+  })
+
+  it.each([
+    { draft: '', selection: { start: 0, end: 0 }, expected: '/review ', caret: 8 },
+    { draft: 'omega', selection: { start: 0, end: 0 }, expected: '/review omega', caret: 8 },
+    { draft: 'alpha', selection: { start: 5, end: 5 }, expected: 'alpha /review ', caret: 14 },
+    { draft: 'alpha ', selection: { start: 6, end: 6 }, expected: 'alpha /review ', caret: 14 },
+    { draft: 'alphaomega', selection: { start: 5, end: 10 }, expected: 'alpha /review ', caret: 14 },
+  ])('preserves surrounding draft semantics for $draft at $selection', async ({
+    draft, selection, expected, caret,
+  }) => {
+    const b = await bench()
+    const focus = vi.fn((_selection: unknown, complete: () => void) => { complete() })
+    b.shell.setDraft(draft)
+    b.shell.rememberSelection(selection)
+    b.shell.bindComposer(focus)
+
+    b.scoped.insertSkillToken('review')
+
+    expect(b.shell.snapshot.draft).toBe(expected)
+    expect(focus).toHaveBeenCalledWith({ start: caret, end: caret }, expect.any(Function))
+    expect(b.prompt).not.toHaveBeenCalled()
+    await b.runtime.dispose()
+  })
+
+  it('retains the focus request until the target composer mounts', async () => {
+    const b = await bench()
+    b.scoped.insertSkillToken('review')
+    const focus = vi.fn((_selection: unknown, complete: () => void) => { complete() })
+
+    b.shell.bindComposer(focus)
+
+    expect(focus).toHaveBeenCalledWith({ start: 8, end: 8 }, expect.any(Function))
+    expect(b.prompt).not.toHaveBeenCalled()
+    await b.runtime.dispose()
+  })
+
+  it('rejects an addressed subagent as a programmatic Skill-token target', async () => {
+    const b = await bench()
+    vi.spyOn(b.runtime.sessions, 'subagentAddress').mockReturnValue({
+      parentSessionId: 'parent',
+      childSessionId: 's1',
+      mode: 'continuable',
+    } as never)
+
+    expect(() => { b.scoped.insertSkillToken('review') }).toThrow(/does not target subagents/)
+    expect(b.shell.snapshot.draft).toBe('')
+    expect(b.prompt).not.toHaveBeenCalled()
+    await b.runtime.dispose()
+  })
+
+  it('rejects a persisted subagent origin without a live subagent address', async () => {
+    const b = await bench()
+    const snapshot = b.runtime.sessions.list.getSnapshot()
+    const id = snapshot.ids[0]!
+    vi.spyOn(b.runtime.sessions.list, 'getSnapshot').mockReturnValue({
+      ...snapshot,
+      byId: {
+        ...snapshot.byId,
+        [id]: { ...snapshot.byId[id]!, origin: 'subagent' },
+      },
+    })
+
+    expect(() => { b.scoped.insertSkillToken('review') }).toThrow(/does not target subagents/)
+    expect(b.shell.snapshot.draft).toBe('')
+    expect(b.prompt).not.toHaveBeenCalled()
     await b.runtime.dispose()
   })
 

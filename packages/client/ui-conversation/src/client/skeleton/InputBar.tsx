@@ -219,6 +219,27 @@ export function InputBar({
     revealSelectionFocus(el)
   }, [locked, sessionId])
 
+  useEffect(() => {
+    const el = inputRef.current
+    if (keyboard === undefined || el === null) return
+    let focusFrame: number | undefined
+    const unbind = keyboard.bindComposer((selection, complete) => {
+      if (focusFrame !== undefined) cancelAnimationFrame(focusFrame)
+      focusFrame = requestAnimationFrame(() => {
+        focusFrame = undefined
+        if (inputRef.current !== el || !el.isConnected) return
+        el.focus({ preventScroll: true })
+        el.setSelectionRange(selection.start, selection.end)
+        revealSelectionFocus(el)
+        complete()
+      })
+    })
+    return () => {
+      unbind()
+      if (focusFrame !== undefined) cancelAnimationFrame(focusFrame)
+    }
+  }, [keyboard])
+
   // A persisted draft arrives AFTER the unlock effect: ConversationSession
   // adopts it in its own mount effect, and a parent's mount effect runs after
   // its children's. Reveal when the draft becomes non-empty so a restored long
@@ -521,7 +542,7 @@ export function InputBar({
     // Any caret/selection gesture ends a live paste attempt (the machine
     // cannot observe DOM selection). Cheap no-op when none is live.
     if (keyboard !== undefined && keyboard.snapshot.paste !== undefined) keyboard.invalidatePaste()
-    void e
+    keyboard?.rememberSelection(selectionOf(e.currentTarget))
   }
 
   // Button presses steal focus from the textarea; suppress at mousedown so

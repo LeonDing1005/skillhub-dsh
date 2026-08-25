@@ -56,6 +56,17 @@ export interface IConversation {
    * @returns completion of the page pull.
    */
   loadOlder(): Promise<void>
+  /**
+   * Insert a plain-text Skill token at the saved composer selection without
+   * submitting the draft.
+   * @param name - canonical Skill name without the leading slash.
+   */
+  insertSkillToken(name: string): void
+}
+
+/** InputHub operations used by the scope-addressed conversation service. */
+interface ConversationInput extends SessionInputResolver {
+  insertSkillToken(sessionId: SessionId, skillName: string): void
 }
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
@@ -93,6 +104,7 @@ export class ConversationController extends Service implements IConversation {
   readonly input: SessionInputResolver
   /** The per-session composer-block registry. */
   readonly blocks: ComposerBlocks
+  private readonly inputHub: ConversationInput
   private readonly draftAttachments = new Map<DraftAttachmentId, ComposerAttachment>()
   private readonly imageUrls = new Map<string, ImageUrlEntry>()
   private readonly imageGenerations = new Map<SessionId, number>()
@@ -106,9 +118,10 @@ export class ConversationController extends Service implements IConversation {
    * constructed by the plugin apply (the same instances the slot inject
    * factories close over).
    */
-  constructor(ctx: Context, config: { input: SessionInputResolver; blocks: ComposerBlocks }) {
+  constructor(ctx: Context, config: { input: ConversationInput; blocks: ComposerBlocks }) {
     super(ctx, 'conversation')
     this.input = config.input
+    this.inputHub = config.input
     this.blocks = config.blocks
     ctx.effect(() => () => {
       this.disposed = true
@@ -285,6 +298,16 @@ export class ConversationController extends Service implements IConversation {
   /** Pull one older history page for the scoped Session. */
   async loadOlder(): Promise<void> {
     await this.scopedSession('loadOlder').loadOlder()
+  }
+
+  /** Insert a Skill token into the caller scope's composer without submitting. */
+  insertSkillToken(name: string): void {
+    const id = this.scopeId('insertSkillToken')
+    const sessions = this.requireSessions()
+    if (sessions.subagentAddress(id) !== undefined || sessions.list.getSnapshot().byId[id]?.origin === 'subagent') {
+      throw new Error('conversation.insertSkillToken does not target subagents')
+    }
+    this.inputHub.insertSkillToken(id, name)
   }
 
   /** Resolve the caller scope's session face or throw on root contexts. */

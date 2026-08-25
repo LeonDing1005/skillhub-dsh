@@ -141,6 +141,22 @@ export class InputHub implements SessionInputResolver {
   }
 
   /**
+   * Insert one Skill token through the session's ordinary plain-text trigger
+   * event and focus the composer at the resulting caret.
+   * @param id - target ordinary session.
+   * @param name - canonical Skill name without the leading slash.
+   */
+  insertSkillToken(id: SessionId, name: string): void {
+    const shell = this.shell(id)
+    const edit = shell.skillTokenEdit(name)
+    const inputTriggers = this.inputTriggers(id)
+    if (inputTriggers === undefined || !inputTriggers.insertText(edit.text, edit.span)) {
+      throw new Error(`conversation.insertSkillToken: session "${id}" rejected the composer edit`)
+    }
+    shell.focusComposer(edit.selection)
+  }
+
+  /**
    * Default sink: optimistic clear + prompt. The session is always a real
    * host entity (materialized when its workspace was picked), so there is
    * exactly one path; a failed first prompt is an ordinary prompt failure

@@ -112,6 +112,7 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
   actx.on('slash/input-begin-command', req => shell.beginCommand(req.claim, req.span) ? true : undefined)
   actx.on('slash/input-insert-reference', req => shell.insertReference(req.reference, req.span) ? true : undefined)
   actx.on('slash/input-consume-token', req => shell.consumeToken(req.guard) ? true : undefined)
+  actx.on('slash/input-insert-text', req => shell.insertText(req.text, req.span) ? true : undefined)
   const wiring = shell
   const sessionStore = createSnapshotStore<ConversationSnapshot>({
     sessionId, views: EMPTY_CONVERSATION_VIEWS, chat: EMPTY_CHAT_SNAPSHOT,
@@ -164,7 +165,7 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
   const type = (text: string): void => {
     fireEvent.change(textarea, { target: { value: text } })
   }
-  return { ctx, inputTriggers, controller, shell, wiring, view, textarea, type, sink }
+  return { ctx, inputTriggers, controller, shell, wiring, view, barProps, textarea, type, sink }
 }
 
 async function bench(executeImpl?: (line: string) => Promise<SubmitOutcome>) {
@@ -174,6 +175,51 @@ async function bench(executeImpl?: (line: string) => Promise<SubmitOutcome>) {
   const base = await scopedBench((inputTriggers) => { inputTriggers.registerSource(source) })
   return { ...base, execute, executed }
 }
+
+describe('programmatic Skill token insertion', () => {
+  it('uses the saved DOM selection, restores focus, and does not submit', async () => {
+    const b = await scopedBench()
+    b.type('alphaomega')
+    fireEvent.focus(b.textarea)
+    b.textarea.setSelectionRange(5, 5)
+    fireEvent.select(b.textarea)
+    fireEvent.blur(b.textarea)
+
+    act(() => {
+      const edit = b.shell.skillTokenEdit('review')
+      expect(b.controller.insertText(edit.text, edit.span)).toBe(true)
+      b.shell.focusComposer(edit.selection)
+    })
+
+    await vi.waitFor(() => {
+      expect(b.textarea.value).toBe('alpha /review omega')
+      expect(document.activeElement).toBe(b.textarea)
+      expect(b.textarea.selectionStart).toBe(14)
+      expect(b.textarea.selectionEnd).toBe(14)
+    })
+    expect(b.sink).not.toHaveBeenCalled()
+  })
+
+  it('retains focus intent when the target composer unmounts before the focus frame', async () => {
+    const b = await scopedBench()
+
+    act(() => {
+      b.shell.setDraft('alpha')
+      b.shell.focusComposer({ start: 5, end: 5 })
+      b.view.unmount()
+    })
+    const next = render(<InputBar {...b.barProps} />)
+    const textarea = next.container.querySelector('textarea')!
+
+    await vi.waitFor(() => {
+      expect(textarea.value).toBe('alpha')
+      expect(document.activeElement).toBe(textarea)
+      expect(textarea.selectionStart).toBe(5)
+      expect(textarea.selectionEnd).toBe(5)
+    })
+    expect(b.sink).not.toHaveBeenCalled()
+  })
+})
 
 describe('scenario A: menu-pick /goal, type args, enter submits', () => {
   it('runs the whole claim chain through the real pipeline', async () => {

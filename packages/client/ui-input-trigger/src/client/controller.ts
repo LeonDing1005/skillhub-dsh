@@ -309,6 +309,17 @@ export class InputTriggerController {
     this.lexiconOffs.clear()
   }
 
+  /**
+   * Insert literal text through the same scoped input event used by a source
+   * pick.
+   * @param text - replacement text.
+   * @param span - current draft span and revision.
+   * @returns whether the session input applied the replacement.
+   */
+  insertText(text: string, span: import('../types.ts').TokenSpan): boolean {
+    return this.execute({ text }, span)
+  }
+
   /** The session projection handed to sources (agent-backed identity; constant per scope). */
   private project(): ClientSessionContext {
     return { sessionId: this.deps.sessionId }

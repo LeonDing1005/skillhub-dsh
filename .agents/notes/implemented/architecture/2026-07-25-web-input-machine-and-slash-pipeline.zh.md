@@ -4,7 +4,7 @@ Status: implemented
 
 [English](2026-07-25-web-input-machine-and-slash-pipeline.md) | 中文
 
-> 范围：输入状态机（occurrence 表 + claim 看护 + 提交事务）、hub/facade 与发送编排、跨插件输入改写的三个 scoped bail 事件、`/` 与 `@` 触发检测与菜单流水线（ui-input-trigger）、composer 周边 slot 体系。依赖[会话作用域 note](2026-07-25-web-client-session-scope-and-provide-channel.md)的 sctx / provide / session-maybe 与 blank 实体模型；命令知识（三型、目录、popup）零涉——那是[命令业务面 note](2026-07-25-web-command-surfaces-and-assembly.md)的领地。
+> 范围：输入状态机（occurrence 表 + claim 看护 + 提交事务）、hub/facade 与发送编排、跨插件输入改写的四个 scoped bail 事件、`/` 与 `@` 触发检测与菜单流水线（ui-input-trigger）、composer 周边 slot 体系。依赖[会话作用域 note](2026-07-25-web-client-session-scope-and-provide-channel.md)的 sctx / provide / session-maybe 与 blank 实体模型；命令知识（三型、目录、popup）零涉——那是[命令业务面 note](2026-07-25-web-command-surfaces-and-assembly.md)的领地。
 
 ## 问题
 
@@ -48,13 +48,14 @@ occurrence 表与 chip 三投影：
 - 剪贴板/持久化投影 = clipboardText：copy/cut 把选区内占位符展开；draft 持久化 mirror 写同一投影（chat store 里永远是普通文本，刷新 seed 语义 = 全选复制→重开→粘贴，chip 跨刷新降级为文本）。
 - 模型投影 = submit 时经 source `codec.serialize` 逐颗生成（归 submit attempt 的 signal 与陈旧守卫；owner 缺失/失败/取消则不发送，不降级为 `/name`）。
 
-### 跨插件输入改写：三个 scoped bail 事件
+### 跨插件输入改写：四个 scoped bail 事件
 
-约定声明在 ui-input-trigger（依赖最底层），生产者经 `sctx.bail(sctx, ...)` 派发，唯一消费侧是 hub 建 shell 时挂在 sctx 上的三个 listener；返回 `true` ⟺ 机器过 phase + CAS 守卫并实际改写（发出事件 ≠ 修改成功，Space 是否 `preventDefault` 以返回值为准）：
+约定声明在 ui-input-trigger（依赖最底层），生产者经 `sctx.bail(sctx, ...)` 派发，唯一消费侧是 hub 建 shell 时挂在 sctx 上的四个 listener；返回 `true` ⟺ 机器过 phase + CAS 守卫并实际改写（发出事件 ≠ 修改成功，Space 是否 `preventDefault` 以返回值为准）：
 
 - `slash/input-begin-command` `{claim, span}`——菜单 pick / Space 裁决出的命令 claim 回填（InputTriggerController 派发）。
 - `slash/input-insert-reference` `{reference, span}`——引用 chip 插入（InputTriggerController 派发）。
 - `slash/input-consume-token` `{guard: span | bare-token}`——业务成功后消费命令 token（下游命令面派发）。
+- `slash/input-insert-text` `{text, span}`——source pick 或可编程 composer 生产方发起的原文引用插入（InputTriggerController 派发）。
 
 不事件化的调用（注册表登记 → 显式调用 → await）：Input 自身的 draft/submit、Enter 异步裁决、reference serializer、异步 paste matcher。`@mode bail` 已入 JSDoc parser 与 cordis catalog 门禁（scripts/jsdoc.ts）。
 
@@ -63,13 +64,14 @@ occurrence 表与 chip 三投影：
 对「命令」零知识的触发/菜单/pick 流水线：
 
 - 服务只有 source 注册表（`InputTriggerSource{trigger: '/'|'@', name, order?, candidates, onPick, matchSpace?, matchEnter?}`；(trigger,name) 唯一；可选 `order` 对 roster 排序——越小越靠前、默认 0、同值保持注册序——排序后的 roster 同时是组序与轮询序）与 `sessionOf(sctx)`。实现 match 钩子即参与空格/回车裁决的声明；流水线按 roster 序轮询，首个非 undefined 应答胜出，无人认领落 default sink。matchSpace 同步（空格在击键中触发，只许热缓存）；matchEnter 异步（可 await 源自身预热，预热失败即 reject）。
-- controller 持有唯一权威 hit（含 span；菜单关闭后为 Space 保留）、每会话 menu store、候选 fetch generation、键盘仲裁（combobox 模式：焦点始终在 textarea，↑↓/Enter/Escape 拦截且全程过 IME composition 守卫，唯一例外 Shift+Enter 无条件先行），以及 pick 编排（outcome → 自派 bail 事件）。`toggleSource(name, syntheticHit)` 是 chrome launcher 路径：它基于调用方的 textarea selection，只 seed 对应的已注册 source，并发布 `launcher = name` 直至关闭；普通的键入式 tracking 会清除 launcher 并恢复完整的 trigger roster。两条路径渲染同一个 MenuView，并执行同一条 `onPick` 链。`dismiss()` 动词支撑 MenuView 注入的 `onDismiss`（指针落在菜单与所在 composer 卡片之外即关闭菜单；MenuView 还经 `slash.menu` locale 命名空间本地化组标题，并经 ui-primitives 的 `useAnchoredMaxHeight` 把高度收敛到 composer 上方的视口空间）；每个会话作用域出生时对 source roster 做一次 `warm(projection)`，projection 在该 scope 内只有稳定的 sessionId，无 published/能力跃迁；scope disposer 拆除 controller。
+- controller 持有唯一权威 hit（含 span；菜单关闭后为 Space 保留）、每会话 menu store、候选 fetch generation、键盘仲裁（combobox 模式：焦点始终在 textarea，↑↓/Enter/Escape 拦截且全程过 IME composition 守卫，唯一例外 Shift+Enter 无条件先行），以及 pick 编排（outcome → 自派 bail 事件）。`toggleSource(name, syntheticHit)` 是 chrome launcher 路径：它基于调用方的 textarea selection，只 seed 对应的已注册 source，并发布 `launcher = name` 直至关闭；普通的键入式 tracking 会清除 launcher 并恢复完整的 trigger roster。`insertText(text, span)` 是进入同一 scoped 纯文本事件的可编程路径。launcher 与键入路径渲染同一个 MenuView，并执行同一条 `onPick` 链。`dismiss()` 动词支撑 MenuView 注入的 `onDismiss`（指针落在菜单与所在 composer 卡片之外即关闭菜单；MenuView 还经 `slash.menu` locale 命名空间本地化组标题，并经 ui-primitives 的 `useAnchoredMaxHeight` 把高度收敛到 composer 上方的视口空间）；每个会话作用域出生时对 source roster 做一次 `warm(projection)`，projection 在该 scope 内只有稳定的 sessionId，无 published/能力跃迁；scope disposer 拆除 controller。
 - 触发检测词边界（`user@host`、URL `/` 永不触发）、守卫分档（plain：`/` 到处 + `@` 行内 / claimed：`/` 抑制、`@` 活 / frozen：全无）为冻结纯核。
 
 ### hub / facade：常驻外壳与严格会话输入体
 
 - hub（trigger/decoration 注册表 + 发送编排）对 slash/command 服务是可选 `ctx.get()` 依赖：无 ui-input-trigger/命令面时输入正常收发，优雅降级。
 - 每个实体会话只有一个 `SessionInputShell`（facade），随会话作用域创建和拆除；无会话时不造 input machine。`ConversationRoot` 自身是 `session-maybe` 常驻外壳，持有 HeroShell、Workspace picker、composer stack 与 chain fallback 外框。它始终拥有同一个 scrollport 与 composer seat；会话出现后，彼此独立的严格会话 header 和 body outlet 只填入这些固定区域。
+- 在普通 Session scope 上，`conversation.insertSkillToken(name)` 操作读取 shell 已保存的 textarea selection；若前一个字符不是空白，则添加前置分隔符，再经 `InputTriggerController.insertText` 派发原文 `/name ` 改写；subagent scope 会被拒绝。成功改写会保留周围 draft 文本，把 selection 折叠到 token 之后，聚焦 textarea，并且绝不提交。bar 未挂载时，shell 会保留聚焦请求，直至下一次绑定。
 - composer bar 是一个无条件渲染的 `session-maybe` slot entry：无会话时同一个 InputBar 以惰性态渲染（machine face 缺席、`disabled` owner prop），`connectWorkspace` 返回 blank 会话后同一实例转为 live——textarea DOM 在无会话 → blank 切换及其后每次 phase 翻转中都不重建；`ConversationRoot`、Hero 与布局骨架全程保持。
 - ConversationRoot 的 Hero 判据是 `sessionId === undefined || (composerPhase === 'blank' && (openState === 'open' || summaryBlank === true))`：summary 已证实为空的会话在任何 open state 下都保持 Hero，未经证实的会话则在 loading 期间进入 settling。首次 submit 同步进入 engaging，失败也保留 composer 与错误上下文，不退回 blank Hero；sidebar 的 blank 位只在提示词成功受理后翻 false。
 - 发送统一在 hub defaultSink：乐观清稿后只走 `session.prompt` 且固定 `mode:'queue'`（Web UI 无 steer 入口；host 线缆上的 `mode:'steer'` 不经此 machine）；失败且 live draft 仍为空才回填，用户已经继续输入则不覆盖。不存在 Draft materialize 或 attach 事务。
@@ -80,7 +82,7 @@ occurrence 表与 chip 三投影：
 
 skill/@subagent 引用不走占位符 + occurrence 身份链——纯文本引用决策：pick 直接把 `/name ` `@name ` 原文插进 draft，chip 视觉纯派生：
 
-- PickOutcome 增 `{text}` arm；新 scoped bail 事件 `slash/input-insert-text` `{text, span}`（与另三个同约定：draftRev CAS、返回 true ⟺ 实际改写）；facade.insertText 走 setDraft 拼接，机器零改动。
+- PickOutcome 具有 `{text}` arm；scoped bail 事件 `slash/input-insert-text` `{text, span}` 与另三个同约定（draftRev CAS、返回 true ⟺ 实际改写）；facade.insertText 走 setDraft 拼接，机器零改动。
 - source 可选 `lexicon?(session)` 钩子：同步热快照名录，`undefined` = 数据未热——零装饰、永不触发 fetch（渲染路径保持同步无副作用）；配对的可选 `subscribeLexicon?(session, listener)` 钩子是名录在 warm 之后仍会变化（目录 settle、子代生灭）时的失效通道。controller 把各名录聚合进自己的 `lexicon` 快照 store（每次 source 通知重拉）；scope 出生后才注册的 source 由服务广播给活 controller，补 warm 并并入名录。
 - `decorations.scanTextRefs`：词边界扫描 draft（行首/空白后的 `/name`、`@name`，`x/name` 永不命中）对照名录，命中即 `.textRef` mark（backdrop 纯 range 高亮，同 hlToken）；编辑破坏匹配形状下次扫描自然消失。
 - 发送即原文（不再 `<skill>` 序列化）；气泡侧 MessageItem 双形状装饰（legacy `<skill>` 标签 + 纯文本 token）。
