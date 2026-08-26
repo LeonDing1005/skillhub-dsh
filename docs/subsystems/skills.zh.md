@@ -274,7 +274,7 @@ async get(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<Commu
 async download(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDownload>
 ```
 
-Source: [`packages/skill/skill-marketplace/src/index.ts:71`](../../packages/skill/skill-marketplace/src/index.ts)
+Source: [`packages/skill/skill-marketplace/src/index.ts:78`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

@@ -17,6 +17,9 @@ const DEFAULT_STALE_TTL_MS = 24 * 60 * 60 * 1000
 const DEFAULT_RATE_LIMIT_RETRIES = 3
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 250
 const DEFAULT_SKILL_MARKDOWN_MAX_BYTES = 1024 * 1024
+const DEFAULT_VERSION_COUNT_LIMIT = 1000
+const DEFAULT_ZIP_DIRECTORY_MAX_BYTES = 4 * 1024 * 1024
+const MAX_ZIP_DIRECTORY_MAX_BYTES = 64 * 1024 * 1024
 const MAX_RATE_LIMIT_RETRIES = 10
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
@@ -58,6 +61,10 @@ export interface Config {
   rateLimitBackoffMs?: number
   /** Maximum UTF-8 bytes accepted from an exact release SKILL.md. */
   skillMarkdownMaxBytes?: number
+  /** Maximum published versions accepted for one Community Skill. */
+  versionCountLimit?: number
+  /** Maximum central-directory bytes accepted from an exact release ZIP. */
+  zipDirectoryMaxBytes?: number
 }
 
 /** Dependencies that make the adapter deterministic in tests. */
@@ -78,6 +85,8 @@ export class SkillMarketplace extends Service {
     rateLimitRetries: z.number().default(DEFAULT_RATE_LIMIT_RETRIES),
     rateLimitBackoffMs: z.number().default(DEFAULT_RATE_LIMIT_BACKOFF_MS),
     skillMarkdownMaxBytes: z.number().default(DEFAULT_SKILL_MARKDOWN_MAX_BYTES),
+    versionCountLimit: z.number().default(DEFAULT_VERSION_COUNT_LIMIT),
+    zipDirectoryMaxBytes: z.number().default(DEFAULT_ZIP_DIRECTORY_MAX_BYTES),
   })
 
   /** Stable configured Registry Instance identity attached to every result. */
@@ -101,6 +110,8 @@ export class SkillMarketplace extends Service {
       rateLimitRetries: resolved.rateLimitRetries,
       rateLimitBackoffMs: resolved.rateLimitBackoffMs,
       skillMarkdownMaxBytes: resolved.skillMarkdownMaxBytes,
+      versionCountLimit: resolved.versionCountLimit,
+      zipDirectoryMaxBytes: resolved.zipDirectoryMaxBytes,
       fetch: options.fetch,
       now: options.now,
       sleep: options.sleep ?? abortableDelay,
@@ -147,6 +158,8 @@ interface ResolvedConfig {
   readonly rateLimitRetries: number
   readonly rateLimitBackoffMs: number
   readonly skillMarkdownMaxBytes: number
+  readonly versionCountLimit: number
+  readonly zipDirectoryMaxBytes: number
 }
 
 /** Resolve defaults and reject self-contained deployment errors before serving calls. */
@@ -186,6 +199,15 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(skillMarkdownMaxBytes) || skillMarkdownMaxBytes < 1) {
     throw new Error('skill-marketplace: skillMarkdownMaxBytes must be a positive safe integer')
   }
+  const versionCountLimit = config.versionCountLimit ?? DEFAULT_VERSION_COUNT_LIMIT
+  if (!Number.isSafeInteger(versionCountLimit) || versionCountLimit < 1) {
+    throw new Error('skill-marketplace: versionCountLimit must be a positive safe integer')
+  }
+  const zipDirectoryMaxBytes = config.zipDirectoryMaxBytes ?? DEFAULT_ZIP_DIRECTORY_MAX_BYTES
+  if (!Number.isSafeInteger(zipDirectoryMaxBytes) || zipDirectoryMaxBytes < 1
+    || zipDirectoryMaxBytes > MAX_ZIP_DIRECTORY_MAX_BYTES) {
+    throw new Error(`skill-marketplace: zipDirectoryMaxBytes must be an integer from 1 through ${MAX_ZIP_DIRECTORY_MAX_BYTES}`)
+  }
   return {
     registryInstanceId: registryInstanceId(config.registryInstanceId),
     baseUrl: config.baseUrl,
@@ -195,6 +217,8 @@ function resolveConfig(config: Config): ResolvedConfig {
     rateLimitRetries,
     rateLimitBackoffMs,
     skillMarkdownMaxBytes,
+    versionCountLimit,
+    zipDirectoryMaxBytes,
   }
 }
 

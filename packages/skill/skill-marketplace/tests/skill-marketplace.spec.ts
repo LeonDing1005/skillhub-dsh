@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { strToU8, Zip, ZipDeflate, zipSync } from 'fflate'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import SkillMarketplace, { registryInstanceId } from '@deepseek-ai/dsh-skill-marketplace'
@@ -13,6 +15,73 @@ const inputUrl = (input: string | URL | Request): string => {
   if (typeof input === 'string') return input
   return input instanceof URL ? input.href : input.url
 }
+
+const changedCentralName = (archive: Uint8Array): Uint8Array => {
+  const changed = archive.slice()
+  for (let index = 0; index <= changed.byteLength - 4; index += 1) {
+    if (changed[index] === 0x50 && changed[index + 1] === 0x4b
+      && changed[index + 2] === 0x01 && changed[index + 3] === 0x02) {
+      changed[index + 46] = 'X'.charCodeAt(0)
+      return changed
+    }
+  }
+  throw new Error('test ZIP has no central directory entry')
+}
+
+const changedCentralCrc = (archive: Uint8Array): Uint8Array => {
+  const changed = archive.slice()
+  for (let index = 0; index <= changed.byteLength - 20; index += 1) {
+    if (changed[index] === 0x50 && changed[index + 1] === 0x4b
+      && changed[index + 2] === 0x01 && changed[index + 3] === 0x02) {
+      const view = new DataView(changed.buffer, changed.byteOffset + index)
+      view.setUint32(16, view.getUint32(16, true) ^ 0xff, true)
+      return changed
+    }
+  }
+  throw new Error('test ZIP has no central directory entry')
+}
+
+const changedAllCrcs = (archive: Uint8Array): Uint8Array => {
+  const changed = archive.slice()
+  let replacement: number | undefined
+  for (let index = 0; index <= changed.byteLength - 30; index += 1) {
+    const view = new DataView(changed.buffer, changed.byteOffset + index)
+    if (changed[index] === 0x50 && changed[index + 1] === 0x4b
+      && changed[index + 2] === 0x03 && changed[index + 3] === 0x04) {
+      replacement = view.getUint32(14, true) ^ 0xff
+      view.setUint32(14, replacement, true)
+    }
+    if (changed[index] === 0x50 && changed[index + 1] === 0x4b
+      && changed[index + 2] === 0x01 && changed[index + 3] === 0x02 && replacement !== undefined) {
+      view.setUint32(16, replacement, true)
+      return changed
+    }
+  }
+  throw new Error('test ZIP has no matching local and central headers')
+}
+
+const streamingZip = (contents: Uint8Array): Promise<Uint8Array> => new Promise((resolve, reject) => {
+  const chunks: Uint8Array[] = []
+  const archive = new Zip((error, chunk, final) => {
+    if (error !== null) {
+      reject(error)
+      return
+    }
+    chunks.push(chunk)
+    if (!final) return
+    const result = new Uint8Array(chunks.reduce((total, value) => total + value.byteLength, 0))
+    let offset = 0
+    for (const value of chunks) {
+      result.set(value, offset)
+      offset += value.byteLength
+    }
+    resolve(result)
+  })
+  const entry = new ZipDeflate('SKILL.md')
+  archive.add(entry)
+  entry.push(contents, true)
+  archive.end()
+})
 
 interface SkillPageFixtureData {
   items: Array<{ downloadCount: number; starCount: number }>
@@ -654,6 +723,88 @@ describe('SkillMarketplace release detail', () => {
     })
   })
 
+  it.each([
+    ['a nonzero first page', { page: 1, total: 1, items: [{ version: '1.0.0', publishedAt: null, downloadAvailable: true }] }],
+    ['a short result', { page: 0, total: 2, items: [{ version: '1.0.0', publishedAt: null, downloadAvailable: true }] }],
+  ])('rejects version pagination with %s', async (_name, changed) => {
+    const responses = await releaseResponses()
+    responses.set('/api/web/skills/global/weather/versions?page=0&size=20', Response.json({
+      code: 0,
+      data: { ...changed, size: 20 },
+    }))
+    const marketplace = new SkillMarketplace(
+      new Context(),
+      { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test' },
+      {
+        fetch: vi.fn<typeof globalThis.fetch>(async (input) => {
+          const url = new URL(inputUrl(input))
+          return responses.get(`${url.pathname}${url.search}`) ?? new Response('not found', { status: 404 })
+        }),
+        now: () => new Date('2026-08-25T09:00:00Z'),
+      },
+    )
+
+    await expect(marketplace.get(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
+  })
+
+  it('rejects a version list beyond the configured total limit before requesting another page', async () => {
+    const responses = await releaseResponses()
+    responses.set('/api/web/skills/global/weather/versions?page=0&size=1', Response.json({
+      code: 0,
+      data: {
+        items: [{ version: '1.0.0', publishedAt: null, downloadAvailable: true }],
+        total: 3,
+        page: 0,
+        size: 1,
+      },
+    }))
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(inputUrl(input))
+      return responses.get(`${url.pathname}${url.search}`) ?? new Response('not found', { status: 404 })
+    })
+    const marketplace = new SkillMarketplace(
+      new Context(),
+      {
+        registryInstanceId: 'public-skillhub',
+        baseUrl: 'https://skills.example.test',
+        pageSizeLimit: 1,
+        versionCountLimit: 2,
+      },
+      { fetch, now: () => new Date('2026-08-25T09:00:00Z') },
+    )
+
+    await expect(marketplace.get(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
+    expect(fetch.mock.calls.some(([input]) => inputUrl(input).includes('versions?page=1'))).toBe(false)
+  })
+
+  it('rejects repeated versions across otherwise consistent pages', async () => {
+    const responses = await releaseResponses()
+    for (const page of [0, 1]) {
+      responses.set(`/api/web/skills/global/weather/versions?page=${page}&size=1`, Response.json({
+        code: 0,
+        data: {
+          items: [{ version: '1.0.0', publishedAt: null, downloadAvailable: true }],
+          total: 2,
+          page,
+          size: 1,
+        },
+      }))
+    }
+    const marketplace = new SkillMarketplace(
+      new Context(),
+      { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', pageSizeLimit: 1 },
+      {
+        fetch: vi.fn<typeof globalThis.fetch>(async (input) => {
+          const url = new URL(inputUrl(input))
+          return responses.get(`${url.pathname}${url.search}`) ?? new Response('not found', { status: 404 })
+        }),
+        now: () => new Date('2026-08-25T09:00:00Z'),
+      },
+    )
+
+    await expect(marketplace.get(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
+  })
+
   it('bounds SKILL.md by UTF-8 bytes before returning it', async () => {
     const responses = await releaseResponses()
     responses.set(
@@ -690,12 +841,48 @@ describe('SkillMarketplace release detail', () => {
     await expect(rejected.get(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
   })
 
+  it('cancels SKILL.md when its declared length is malformed', async () => {
+    const responses = await releaseResponses()
+    let cancelled = false
+    responses.set(
+      '/api/web/skills/global/weather/versions/1.0.0/file?path=SKILL.md',
+      new Response(new ReadableStream({
+        pull(controller) { controller.enqueue(new Uint8Array([1])) },
+        cancel() { cancelled = true },
+      }), { headers: { 'content-length': 'invalid' } }),
+    )
+    const marketplace = new SkillMarketplace(
+      new Context(),
+      { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test' },
+      {
+        fetch: vi.fn<typeof globalThis.fetch>(async (input) => {
+          const url = new URL(inputUrl(input))
+          return responses.get(`${url.pathname}${url.search}`) ?? new Response('not found', { status: 404 })
+        }),
+        now: () => new Date('2026-08-25T09:00:00Z'),
+      },
+    )
+
+    await expect(marketplace.get(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
+    expect(cancelled).toBe(true)
+  })
+
   it('verifies resolve identity and streams the exact artifact without installing it', async () => {
     const responses = await releaseResponses()
-    const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x62, 0x79, 0x74, 0x65, 0x73])
+    const skillBytes = strToU8('# Weather toolkit\n')
+    const zipBytes = zipSync({ 'SKILL.md': skillBytes })
+    responses.set('/api/web/skills/global/weather/versions/1.0.0/files', Response.json({
+      code: 0,
+      data: [{
+        filePath: 'SKILL.md',
+        fileSize: skillBytes.byteLength,
+        contentType: 'text/markdown',
+        sha256: createHash('sha256').update(skillBytes).digest('hex'),
+      }],
+    }))
     responses.set(
       '/api/web/skills/global/weather/versions/1.0.0/download',
-      new Response(zipBytes, { headers: { 'content-type': 'application/zip', 'content-length': '9' } }),
+      new Response(zipBytes, { headers: { 'content-type': 'application/zip', 'content-length': String(zipBytes.byteLength) } }),
     )
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
       const url = new URL(inputUrl(input))
@@ -711,7 +898,7 @@ describe('SkillMarketplace release detail', () => {
     expect(artifact).toMatchObject({
       filename: 'weather-toolkit-1.0.0.zip',
       contentType: 'application/zip',
-      contentLength: 9,
+      contentLength: zipBytes.byteLength,
     })
     await expect(new Response(artifact.body).bytes()).resolves.toEqual(zipBytes)
     expect(fetch.mock.calls.map(([input]) => inputUrl(input))).toContain(
@@ -719,11 +906,39 @@ describe('SkillMarketplace release detail', () => {
     )
   })
 
-  it('rejects a non-ZIP artifact body before exposing its stream', async () => {
+  it.each<[string, Uint8Array | Promise<Uint8Array>]>([
+    ['a non-ZIP body', new TextEncoder().encode('<html>error</html>')],
+    ['a structurally invalid ZIP body', new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x62, 0x79, 0x74, 0x65, 0x73])],
+    ['a ZIP without its central directory', zipSync({ 'SKILL.md': strToU8('# Weather toolkit\n') }).subarray(0, -22)],
+    ['a ZIP whose central directory renames a verified file', changedCentralName(zipSync({ 'SKILL.md': strToU8('# Weather toolkit\n') }))],
+    ['a ZIP with a Unicode Path override', zipSync({
+      'SKILL.md': [strToU8('# Weather toolkit\n'), { extra: { 0x7075: strToU8('override.md') } }],
+    })],
+    ['a ZIP whose central CRC differs from its local header', changedCentralCrc(zipSync({
+      'SKILL.md': strToU8('# Weather toolkit\n'),
+    }))],
+    ['a ZIP whose local and central CRCs differ from decoded bytes', changedAllCrcs(zipSync({
+      'SKILL.md': strToU8('# Weather toolkit\n'),
+    }))],
+    ['a data-descriptor ZIP whose central CRC differs from decoded bytes', streamingZip(strToU8('# Weather toolkit\n')).then(changedCentralCrc)],
+    ['a file with the wrong digest', zipSync({ 'SKILL.md': strToU8('changed') })],
+    ['an unexpected file', zipSync({ 'SKILL.md': strToU8('# Weather toolkit\n'), 'extra.txt': strToU8('extra') })],
+  ])('rejects %s while consuming the artifact stream', async (_name, zipBytes) => {
+    const archive = await zipBytes
     const responses = await releaseResponses()
+    const expected = strToU8('# Weather toolkit\n')
+    responses.set('/api/web/skills/global/weather/versions/1.0.0/files', Response.json({
+      code: 0,
+      data: [{
+        filePath: 'SKILL.md',
+        fileSize: expected.byteLength,
+        contentType: 'text/markdown',
+        sha256: createHash('sha256').update(expected).digest('hex'),
+      }],
+    }))
     responses.set(
       '/api/web/skills/global/weather/versions/1.0.0/download',
-      new Response('<html>error</html>', { headers: { 'content-type': 'text/html' } }),
+      new Response(Uint8Array.from(archive), { headers: { 'content-type': 'application/zip' } }),
     )
     const marketplace = new SkillMarketplace(
       new Context(),
@@ -737,7 +952,25 @@ describe('SkillMarketplace release detail', () => {
       },
     )
 
-    await expect(marketplace.download(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
+    const artifact = await marketplace.download(identity)
+    await expect(new Response(artifact.body).bytes()).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
+  })
+
+  it('rejects a blank canonical release name', async () => {
+    const responses = await releaseResponses({ name: '   ' })
+    const marketplace = new SkillMarketplace(
+      new Context(),
+      { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test' },
+      {
+        fetch: vi.fn<typeof globalThis.fetch>(async (input) => {
+          const url = new URL(inputUrl(input))
+          return responses.get(`${url.pathname}${url.search}`) ?? new Response('not found', { status: 404 })
+        }),
+        now: () => new Date('2026-08-25T09:00:00Z'),
+      },
+    )
+
+    await expect(marketplace.get(identity)).rejects.toMatchObject({ code: 'SKILL_MARKETPLACE_INVALID_RESPONSE' })
   })
 
   it('rejects another Registry Instance or a resolve result for another release', async () => {
@@ -791,6 +1024,8 @@ describe('SkillMarketplace configuration', () => {
     ['a negative backoff', { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', rateLimitBackoffMs: -1 }],
     ['a fractional backoff', { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', rateLimitBackoffMs: 1.5 }],
     ['a zero SKILL.md byte limit', { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', skillMarkdownMaxBytes: 0 }],
+    ['a zero version count limit', { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', versionCountLimit: 0 }],
+    ['a zero ZIP directory byte limit', { registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', zipDirectoryMaxBytes: 0 }],
     ['a backoff schedule beyond the timer range', {
       registryInstanceId: 'public-skillhub', baseUrl: 'https://skills.example.test', rateLimitRetries: 10, rateLimitBackoffMs: 5_000_000,
     }],

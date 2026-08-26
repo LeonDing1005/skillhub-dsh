@@ -55,16 +55,12 @@ export function apply(ctx: ClientContext): void {
     if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
     return result.value
   }
-  const download: NonNullable<SkillCenterPageProps['download']> = async (identity) => {
+  const download: NonNullable<SkillCenterPageProps['download']> = (identity) => {
     const url = communityDownloadUrl(identity)
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`Community Skill download failed with HTTP ${response.status}`)
-    const blobUrl = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
-    anchor.href = blobUrl
-    anchor.download = attachmentFilename(response.headers.get('content-disposition'))
+    anchor.href = url.href
     anchor.click()
-    setTimeout(() => { URL.revokeObjectURL(blobUrl) })
+    return Promise.resolve()
   }
   ctx.slots.inject('shell.page', () => ctx.slots.register({
     name: 'shell.page',
@@ -79,12 +75,6 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ open: () => { ctx.layout.openPage(SKILL_CENTER_PAGE_ID) } }),
   }, SkillCenterTrigger))
-}
-
-function attachmentFilename(contentDisposition: string | null): string {
-  const matched = contentDisposition?.match(/(?:^|;)\s*filename="([A-Za-z0-9._-]+)"(?:;|$)/)
-  if (matched?.[1] === undefined) throw new Error('Community Skill download response is missing a safe attachment filename')
-  return matched[1]
 }
 
 function communityDownloadUrl(identity: CommunitySkillIdentityPayload): URL {

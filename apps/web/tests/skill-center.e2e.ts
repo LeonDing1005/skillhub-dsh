@@ -4,6 +4,8 @@ import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { strToU8, zipSync } from 'fflate'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import pixelmatch from 'pixelmatch'
@@ -62,6 +64,7 @@ describe('web e2e: Skill Center', () => {
   let markSlowStarted: () => void
   const listRequests: URL[] = []
   const downloadRequests: string[] = []
+  let expectedZipBytes: Buffer
 
   beforeAll(async () => {
     const pageFixture = JSON.parse(await readFile(join(RESPONSE_FIXTURE_DIR, 'skills-page.json'), 'utf8')) as {
@@ -95,10 +98,6 @@ describe('web e2e: Skill Center', () => {
         size: 20,
       },
     })
-    const filesBody = JSON.stringify({
-      code: 0,
-      data: [{ filePath: 'SKILL.md', fileSize: 420, contentType: 'text/markdown', sha256: 'fixture-sha256' }],
-    })
     const resolveBody = JSON.stringify({
       code: 0,
       data: {
@@ -119,7 +118,18 @@ describe('web e2e: Skill Center', () => {
       'a'.repeat(180),
       '```',
     ].join('\n')
-    const zipBytes = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x62, 0x79, 0x74, 0x65, 0x73])
+    const skillBytes = strToU8(skillMarkdown)
+    const zipBytes = Buffer.from(zipSync({ 'SKILL.md': skillBytes }))
+    expectedZipBytes = zipBytes
+    const filesBody = JSON.stringify({
+      code: 0,
+      data: [{
+        filePath: 'SKILL.md',
+        fileSize: skillBytes.byteLength,
+        contentType: 'text/markdown',
+        sha256: createHash('sha256').update(skillBytes).digest('hex'),
+      }],
+    })
     const staticBodies = new Map<string, string>([
       ['/api/web/labels', JSON.stringify(labelsFixture)],
       ['/api/web/skills/global/weather', JSON.stringify(detailFixture)],
@@ -344,8 +354,6 @@ describe('web e2e: Skill Center', () => {
     await page.addStyleTag({ content: [
       '[data-testid="skill-detail-layer"] { background: #d9d9d9; }',
       '[data-testid="skill-detail-layer"] > [aria-hidden="true"] { background: transparent; backdrop-filter: none; }',
-      '[data-testid="skill-detail-layer"] * { font-family: KaTeX_Main, serif !important; }',
-      '[data-testid="skill-detail-layer"] code, [data-testid="skill-detail-layer"] pre { font-family: KaTeX_Typewriter, monospace !important; }',
     ].join('\n') })
     await page.evaluate(() => document.fonts.ready)
     expect(await dialog.locator('img').count()).toBe(0)
@@ -380,7 +388,7 @@ describe('web e2e: Skill Center', () => {
     expect(saved.suggestedFilename()).toBe('weather-toolkit-1.0.0.zip')
     const savedPath = await saved.path()
     if (savedPath === null) throw new Error('Skill Center browser download did not produce a local artifact')
-    expect(await readFile(savedPath)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x62, 0x79, 0x74, 0x65, 0x73]))
+    expect(await readFile(savedPath)).toEqual(expectedZipBytes)
     expect(downloadRequests).toEqual(['GET'])
     await page.close()
   }, 60_000)

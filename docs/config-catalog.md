@@ -1922,10 +1922,14 @@ export interface Config {
   rateLimitBackoffMs?: number
   /** Maximum UTF-8 bytes accepted from an exact release SKILL.md. */
   skillMarkdownMaxBytes?: number
+  /** Maximum published versions accepted for one Community Skill. */
+  versionCountLimit?: number
+  /** Maximum central-directory bytes accepted from an exact release ZIP. */
+  zipDirectoryMaxBytes?: number
 }
 ```
 
-Source: [`packages/skill/skill-marketplace/src/index.ts:44`](../packages/skill/skill-marketplace/src/index.ts)
+Source: [`packages/skill/skill-marketplace/src/index.ts:47`](../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
