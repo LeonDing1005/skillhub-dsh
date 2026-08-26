@@ -70,6 +70,9 @@ describe('CI workflow', () => {
     expect(windowsNative['runs-on']).toContain('self-hosted')
     expect(windowsNative['runs-on']).toContain('dsh-win-ci')
     expect(windowsNative['runs-on']).toContain('dsh-windows-2025-16core')
+    expect(windowsNative['runs-on']).toContain("github.repository != 'deepseek-harness/deepseek-harness'")
+    expect(windowsNative['runs-on']).toContain('windows-latest')
+    expect(JSON.stringify(windowsNative.env)).toContain("github.repository != 'deepseek-harness/deepseek-harness' && '2' || '8'")
     expect(windowsNative.name).toBe('windows node 24 / native complete')
     expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
     const nativeCommandSteps = (windowsNative.steps as unknown[]).filter((step): step is Record<string, unknown> & { run: string } => (
@@ -99,6 +102,9 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain("github.repository != 'deepseek-harness/deepseek-harness'")
+      expect(job['runs-on']).toContain('ubuntu-latest')
+      expect(JSON.stringify(job.env)).toContain("github.repository != 'deepseek-harness/deepseek-harness'")
     }
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
@@ -372,7 +378,7 @@ describe('Python release workflows', () => {
 })
 
 describe('Issue lifecycle workflow', () => {
-  it('uses explicit review handoff events without rerunning when a draft becomes ready', () => {
+  it('uses explicit review handoff events only in the canonical repository', () => {
     const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
     const lifecyclePullRequest = workflowEvent(lifecycle, 'pull_request')
     const lifecycleReview = workflowEvent(lifecycle, 'pull_request_review')
@@ -384,9 +390,22 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
     expect(lifecycleJob.if).toBe(
-      "${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}",
+      "${{ github.repository == 'deepseek-harness/deepseek-harness' && (github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')) }}",
     )
+    expect(workflowJob(policy, 'policy').if).toBe("github.repository == 'deepseek-harness/deepseek-harness'")
     expect(policyPullRequest.types).toContain('ready_for_review')
+  })
+})
+
+describe('Real DeepSeek API workflow', () => {
+  it('runs only in the canonical repository with its dedicated secret', () => {
+    const workflow = loadWorkflow('.github/workflows/e2e.yml')
+    const e2e = workflowJob(workflow, 'e2e')
+
+    expect(e2e.if).toContain('github.repository == \'deepseek-harness/deepseek-harness\'')
+    expect(e2e.if).toContain("github.event_name != 'pull_request'")
+    expect(e2e.if).toContain('github.event.pull_request.head.repo.fork')
+    expect(JSON.stringify(e2e.steps)).toContain('DEEPSEEK_API_KEY_EXTERNAL')
   })
 })
 
