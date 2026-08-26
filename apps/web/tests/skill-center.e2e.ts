@@ -33,8 +33,10 @@ interface CatalogGeometry {
 async function catalogGeometry(page: Page): Promise<CatalogGeometry> {
   return page.getByRole('main', { name: /Skill Center|技能中心/ }).evaluate((main) => {
     const card = main.querySelector<HTMLElement>('article')
-    const grid = card?.parentElement
-    if (grid === null || card === null) throw new Error('Skill Center catalog geometry is incomplete')
+    if (card === null || card.parentElement === null) {
+      throw new Error('Skill Center catalog geometry is incomplete')
+    }
+    const grid = card.parentElement
     const mainRect = main.getBoundingClientRect()
     const cardRect = card.getBoundingClientRect()
     const gridStyle = getComputedStyle(grid)
