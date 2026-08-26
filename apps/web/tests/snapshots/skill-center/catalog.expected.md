@@ -6,7 +6,7 @@
     - tab "My Skills" [disabled]
   - article:
     - img
-    - text: New global/weather
+    - text: global/weather
     - heading "weather" [level=2]
     - paragraph: Retrieve and summarize current weather and forecasts for locations, rain, temperature, and travel planning using an available web tool or wttr.in over HTTPS.
     - text: Built-in Skill Publisher v1.0.0 0 stars

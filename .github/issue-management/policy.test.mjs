@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   countVisibleUnits,
+  issueSnapshot,
   nextResolvingIssueStatus,
   parseReferences,
   retainIssueReferences,
@@ -187,6 +188,70 @@ test('does not treat pull request references as Issue associations', () => {
     resolving: [1180],
     related: [1181],
   })
+})
+
+test('treats unavailable Issue field values as unset optional metadata', async () => {
+  const originalFetch = globalThis.fetch
+  const originalToken = process.env.GITHUB_TOKEN
+  const requests = []
+  process.env.GITHUB_TOKEN = 'test-token'
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    requests.push(url)
+    if (url.endsWith('/issues/4')) {
+      return Response.json({
+        node_id: 'I_4',
+        title: '测试 Issue',
+        body: withDetails('测试 Issue。'),
+        assignees: [],
+        labels: [],
+        type: { name: 'Task' },
+        state: 'open',
+        state_reason: null,
+      })
+    }
+    return Response.json({ message: 'Not Found' }, { status: 404 })
+  }
+
+  try {
+    const issue = await issueSnapshot(4, null)
+    assert.equal(issue.priority, null)
+    assert.equal(issue.status, null)
+    assert.equal(requests.length, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalToken === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = originalToken
+  }
+})
+
+test('keeps Issue field value authorization failures blocking', async () => {
+  const originalFetch = globalThis.fetch
+  const originalToken = process.env.GITHUB_TOKEN
+  process.env.GITHUB_TOKEN = 'test-token'
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith('/issues/4')) {
+      return Response.json({
+        node_id: 'I_4',
+        title: '测试 Issue',
+        body: withDetails('测试 Issue。'),
+        assignees: [],
+        labels: [],
+        type: { name: 'Task' },
+        state: 'open',
+        state_reason: null,
+      })
+    }
+    return Response.json({ message: 'Forbidden' }, { status: 403 })
+  }
+
+  try {
+    await assert.rejects(issueSnapshot(4, null), /issue-field-values.*403/)
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalToken === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = originalToken
+  }
 })
 
 test('allows informational references without cross-object constraints', () => {

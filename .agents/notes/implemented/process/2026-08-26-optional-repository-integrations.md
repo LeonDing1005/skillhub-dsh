@@ -12,7 +12,7 @@ Issue policy has a separate portability concern: trusted workflow code must quer
 
 ## Decision
 
-The issue-management configuration names `LeonDing1005/skillhub-dsh`, and the Issue lifecycle token is scoped to that repository. Issue policy remains mandatory because it uses the event token and needs no optional application credential.
+The issue-management configuration names `LeonDing1005/skillhub-dsh`, and the Issue lifecycle token is scoped to that repository. Issue policy remains mandatory because it uses the event token and needs no optional application credential. When the repository does not expose the Issue field-values endpoint, policy emits a notice and treats Priority as unset; authentication failures and other API errors remain blocking.
 
 Project lifecycle automation runs only when `DSH_ISSUE_APP_CLIENT_ID` is configured. An absent client ID emits a workflow notice and succeeds without creating a token or mutating ProjectV2. Once the client ID exists, token creation remains fail-loud: a missing or invalid private key, installation, repository grant, or Project permission fails the workflow.
 
@@ -32,4 +32,4 @@ The real-API E2E workflow treats `DEEPSEEK_API_KEY_EXTERNAL` as optional reposit
 
 ## Consequences
 
-A checkout without repository secrets can merge through keyless checks while GitHub records notices for the omitted integrations. Maintainers must configure the GitHub App and DeepSeek secret to obtain ProjectV2 transitions and live-provider coverage. Once configured, bad credentials and real integration regressions remain visible failures.
+A checkout without repository secrets or Issue field values can merge through supported checks while GitHub records notices for omitted integrations and metadata. Maintainers must configure the GitHub App and DeepSeek secret to obtain ProjectV2 transitions and live-provider coverage. Once configured, bad credentials and real integration regressions remain visible failures.
