@@ -1,0 +1,41 @@
+{
+  "code": 0,
+  "msg": "Fetched successfully",
+  "data": {
+    "id": 17,
+    "slug": "weather",
+    "displayName": "weather",
+    "ownerId": "builtin-skill-publisher",
+    "ownerDisplayName": "Built-in Skill Publisher",
+    "summary": "Retrieve and summarize current weather and forecasts for locations, rain, temperature, and travel planning using an available web tool or wttr.in over HTTPS.",
+    "visibility": "PUBLIC",
+    "status": "ACTIVE",
+    "downloadCount": 0,
+    "starCount": 0,
+    "subscriptionCount": 0,
+    "ratingAvg": 0,
+    "ratingCount": 0,
+    "hidden": false,
+    "namespace": "global",
+    "labels": [],
+    "canManageLifecycle": false,
+    "canSubmitPromotion": false,
+    "canInteract": true,
+    "canReport": true,
+    "headlineVersion": {
+      "id": 17,
+      "version": "1.0.0",
+      "status": "PUBLISHED"
+    },
+    "publishedVersion": {
+      "id": 17,
+      "version": "1.0.0",
+      "status": "PUBLISHED"
+    },
+    "ownerPreviewVersion": null,
+    "ownerPreviewReviewComment": null,
+    "resolutionMode": "PUBLISHED"
+  },
+  "timestamp": "2026-08-25T09:35:22.151444302Z",
+  "requestId": "fixture-skill-detail"
+}

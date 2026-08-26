@@ -54,7 +54,10 @@ export type {
 } from './subagents.ts'
 export type { JobView } from './jobs.ts'
 export type { WorkspaceApi, WorkspaceId, WorkspaceView } from './workspace.ts'
-export type { SkillsApi, SkillEntry } from './skills.ts'
+export type {
+  CommunitySkillEntry, CommunitySkillLabelEntry, CommunitySkillListPayload,
+  CommunitySkillListValue, SkillsApi, SkillEntry,
+} from './skills.ts'
 export type { AgentPresetsApi, AgentPresetEntry } from './agent-presets.ts'
 export type { EventsApi, MuxFrame, HostFrame, QueuedInboxItem, ToolCallView, ToolEventView, ToolResultView } from './events.ts'
 export type { GoalsApi, GoalId, GoalRef } from './goals.ts'

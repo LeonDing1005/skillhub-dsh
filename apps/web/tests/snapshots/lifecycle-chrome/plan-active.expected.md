@@ -17,6 +17,9 @@
     - img
     - text: workspace
   - treeitem "New Session" [selected]
+- button "Skill Center":
+  - img
+  - text: Skill Center
 - button "Settings":
   - img
   - text: Settings

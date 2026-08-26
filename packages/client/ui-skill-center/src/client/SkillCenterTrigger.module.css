@@ -1,0 +1,20 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% + 8px);
+  height: 34px;
+  margin: 4px -4px;
+  padding: 6px 2px 6px 10px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.trigger:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.trigger span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.trigger.rail { width: 36px; height: 36px; margin: 8px 0; justify-content: center; gap: 0; padding: 0; border-radius: 50%; }

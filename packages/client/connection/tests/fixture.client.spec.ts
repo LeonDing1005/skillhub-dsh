@@ -214,11 +214,11 @@ describe('createFixtureApi', () => {
     const api = createFixtureApi()
     const settings = await api.settings.describe(req({}))
     if (!settings.result.ok) throw new Error('settings describe failed')
-    expect(settings.result.value.namespaces).toMatchObject([{
+    expect(settings.result.value.namespaces).toContainEqual(expect.objectContaining({
       ns: 'llm-deepseek',
       value: { apiKeyEnv: 'DEEPSEEK_API_KEY' },
       secrets: [{ path: ['apiKey'], set: false }],
-    }])
+    }))
 
     const initial = await api.credentials.describe(req({ refs: ['DEEPSEEK_API_KEY', 'TEST_API_KEY'] }))
     if (!initial.result.ok) throw new Error('credential describe failed')
@@ -979,6 +979,14 @@ describe('FixtureApiClient (protocol-level fake carrier)', () => {
     const client = new FixtureApiClient()
     // Protected at compile time only; reach it directly to pin the tripwire message.
     expect(() => (client as unknown as { doFetch(): Promise<Response> }).doFetch()).toThrow(/doFetch must be unreachable/)
+  })
+
+  it('pre-acknowledges the shipped welcome notice in fixture mode', async () => {
+    const response = await new FixtureApiClient().settings.describe({})
+    if (!response.result.ok) throw new Error('settings describe failed')
+    expect(response.result.value.namespaces).toContainEqual(expect.objectContaining({
+      ns: 'ui-onboarding', value: { welcomeNoticeVersion: '2026-08-13.1' },
+    }))
   })
 
   it('mints request ids, taps all four full forms, and never touches doFetch', async () => {

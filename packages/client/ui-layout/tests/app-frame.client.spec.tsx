@@ -17,6 +17,7 @@ import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
+import { shellPageId } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -60,6 +61,7 @@ function mountFrame() {
     slotCalls.push({ key, props: owner })
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
+    if (key === 'shell.page') return <div data-testid="page-content" />
     if (key === 'details') return <div data-testid="details-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
@@ -161,6 +163,22 @@ describe('AppFrame', () => {
     const { slotCalls, getByTestId } = mountFrame()
     expect(getByTestId('center-content')).toBeTruthy()
     expect(slotCalls.map(c => c.key)).toContain('conversation')
+  })
+
+  it('renders a named shell page without unmounting the session surfaces', () => {
+    const { instance, slotCalls, getByTestId } = mountFrame()
+    const conversation = getByTestId('center-content')
+    const details = getByTestId('details-content')
+    act(() => { instance.actions.openPage(shellPageId('skill-center')) })
+
+    expect(getByTestId('page-content')).toBeTruthy()
+    expect(conversation.isConnected).toBe(true)
+    expect(details.isConnected).toBe(true)
+    expect(slotCalls.filter(call => call.key === 'shell.page').at(-1)?.props).toEqual({ pageId: 'skill-center' })
+
+    act(() => { instance.actions.showConversation() })
+    expect(getByTestId('center-content')).toBe(conversation)
+    expect(getByTestId('details-content')).toBe(details)
   })
 
   it('renders both column occupants before baselines settle (no loading gate)', () => {

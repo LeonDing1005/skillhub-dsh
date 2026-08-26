@@ -99,6 +99,17 @@
     - id: api-gateway
       name: '@deepseek-ai/dsh-host-apiproxy'
 
+    # Optional deployment-owned SkillHub Registry Instance. The browser sees
+    # only the normalized dsh wire and renders its failure state when this row
+    # is disabled.
+    - id: skill-marketplace
+      name: '@deepseek-ai/dsh-skill-marketplace'
+      disabled: !!js process.env.DSH_SKILLHUB_BASE_URL === undefined || process.env.DSH_SKILLHUB_REGISTRY_INSTANCE_ID === undefined
+      config:
+        baseUrl: !!js process.env.DSH_SKILLHUB_BASE_URL
+        registryInstanceId: !!js process.env.DSH_SKILLHUB_REGISTRY_INSTANCE_ID
+        pageSizeLimit: 20
+
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 
@@ -229,6 +240,9 @@
 
     - id: ui-skill
       name: '@deepseek-ai/dsh-client-ui-skill'
+
+    - id: ui-skill-center
+      name: '@deepseek-ai/dsh-client-ui-skill-center'
 
     - id: ui-subagent
       name: '@deepseek-ai/dsh-client-ui-subagent'

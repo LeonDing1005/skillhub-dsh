@@ -324,6 +324,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies.',
   },
   {
+    key: 'skillMarketplace',
+    pkg: 'skill-marketplace',
+    title: 'Community Skills discovery',
+    mode: 'core',
+    consumers: ['host-apiproxy'],
+    note: 'Normalizes one configured SkillHub Registry Instance for browser discovery without registering any entry in the model-facing skill provider registry.',
+  },
+  {
     key: 'agents',
     pkg: 'agent',
     title: 'Agent service',

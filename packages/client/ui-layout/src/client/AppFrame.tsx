@@ -20,17 +20,17 @@ import css from './AppFrame.module.css'
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.page' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
 
 /** Center column grid item (session-body building block). */
-function CenterColumn(props: { children?: ReactNode }) {
-  return <div className={css.centerCol}>{props.children}</div>
+function CenterColumn(props: { children?: ReactNode; hidden?: boolean }) {
+  return <div className={css.centerCol} hidden={props.hidden}>{props.children}</div>
 }
 
 /** Details column grid item; width 0 keeps the subtree mounted (never unmount on close). */
-function DetailsColumn(props: { children?: ReactNode }) {
-  return <div className={css.detailsCol}>{props.children}</div>
+function DetailsColumn(props: { children?: ReactNode; hidden?: boolean }) {
+  return <div className={css.detailsCol} hidden={props.hidden}>{props.children}</div>
 }
 
 /**
@@ -139,7 +139,8 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  const shownDetailsSession = panels.page === undefined ? detailsSession : undefined
+  const cols = computeColumns(viewport, sidebarPreference, shownDetailsSession === undefined ? 0 : panels.details)
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -181,15 +182,12 @@ export function AppFrame({
           width: cols.sidebar,
         })}
       </div>
-      <>
-        {/* Both column occupants stay at fixed tree positions from first
-            paint — no loading gate: a bare status line reads worse than
-            the shell's own pending rendering. The conversation
-            is session-maybe; the strict details entry naturally renders
-            empty while no session is current. */}
-        <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
-        <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
-      </>
+      {/* Both session occupants stay at fixed tree positions from first paint,
+          including while a shell page is visible. This preserves component
+          state and DOM scroll offsets when returning to the conversation. */}
+      <CenterColumn hidden={panels.page !== undefined}>{renderSlot('conversation', {})}</CenterColumn>
+      <DetailsColumn hidden={panels.page !== undefined}>{renderSlot('details', {})}</DetailsColumn>
+      {panels.page !== undefined && <CenterColumn>{renderSlot('shell.page', { pageId: panels.page })}</CenterColumn>}
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>

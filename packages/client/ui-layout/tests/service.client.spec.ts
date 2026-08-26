@@ -5,7 +5,7 @@
  * unwired fail-loud, and re-attach overwriting a stale action set.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
+import { LayoutController, shellPageId } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 import type { PanelActions } from '@deepseek-ai/dsh-client-ui-layout/src/client/service.ts'
 
 function fakePanels(): PanelActions {
@@ -16,11 +16,13 @@ function fakePanels(): PanelActions {
     setNarrow: vi.fn(),
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
+    openPage: vi.fn(),
+    showConversation: vi.fn(),
   }
 }
 
 describe('LayoutController', () => {
-  it('forwards the three panel actions to the attached set', () => {
+  it('forwards panel and center-page actions to the attached set', () => {
     const service = new LayoutController()
     const panels = fakePanels()
     service.attachPanels(panels)
@@ -28,10 +30,14 @@ describe('LayoutController', () => {
     service.toggleSidebar()
     service.openDetails()
     service.closeDetails()
+    service.openPage(shellPageId('skill-center'))
+    service.showConversation()
 
     expect(panels.toggleSidebar).toHaveBeenCalledTimes(1)
     expect(panels.openDetails).toHaveBeenCalledTimes(1)
     expect(panels.closeDetails).toHaveBeenCalledTimes(1)
+    expect(panels.openPage).toHaveBeenCalledWith('skill-center')
+    expect(panels.showConversation).toHaveBeenCalledTimes(1)
     expect(panels.setSidebar).not.toHaveBeenCalled()
     expect(panels.setDetails).not.toHaveBeenCalled()
   })
@@ -41,6 +47,8 @@ describe('LayoutController', () => {
     expect(() => { service.toggleSidebar() }).toThrow(/panel actions not wired/)
     expect(() => { service.openDetails() }).toThrow(/panel actions not wired/)
     expect(() => { service.closeDetails() }).toThrow(/panel actions not wired/)
+    expect(() => { service.openPage(shellPageId('skill-center')) }).toThrow(/panel actions not wired/)
+    expect(() => { service.showConversation() }).toThrow(/panel actions not wired/)
   })
 
   it('re-attach overwrites the stale action set (entry re-register)', () => {

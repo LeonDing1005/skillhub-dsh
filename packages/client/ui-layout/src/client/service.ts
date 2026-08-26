@@ -14,6 +14,16 @@ import type { createLayoutStore } from './stores.ts'
 /** The layout store's bound action set (framework-baked, draft params peeled). */
 export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
 
+/** Opaque id of a center-column page contributed by a client plugin. */
+export type ShellPageId = string & { readonly __shellPageId: unique symbol }
+
+/**
+ * Construct a center-column page id at the contributing plugin boundary.
+ * @param value - stable id unique among registered shell pages.
+ * @returns branded shell page id.
+ */
+export const shellPageId = (value: string): ShellPageId => value as ShellPageId
+
 /**
  * The outward layout face (`ctx.layout`): the panel transitions other
  * plugins may trigger — and exactly what a test fake must supply. The
@@ -27,6 +37,10 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Replace the conversation with one registered center-column page. */
+  openPage(pageId: ShellPageId): void
+  /** Restore the conversation without discarding its mounted state. */
+  showConversation(): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +71,16 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Replace the conversation with one registered center-column page. */
+  openPage(pageId: ShellPageId): void {
+    this.#require().openPage(pageId)
+  }
+
+  /** Restore the conversation without discarding its state. */
+  showConversation(): void {
+    this.#require().showConversation()
   }
 
   #require(): PanelActions {
