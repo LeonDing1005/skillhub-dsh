@@ -362,7 +362,7 @@ export class SessionInputShell implements SessionInput {
     const snapshot = this.core.state
     const start = Math.min(this.selection.start, snapshot.draft.length)
     const end = Math.max(start, Math.min(this.selection.end, snapshot.draft.length))
-    const needsLeadingSpace = start > 0 && !/\s/u.test(snapshot.draft[start - 1]!)
+    const needsLeadingSpace = start > 0 && !/\s/u.test(snapshot.draft.at(start - 1) ?? '')
     const text = `${needsLeadingSpace ? ' ' : ''}/${name} `
     const caret = start + text.length
     return {
