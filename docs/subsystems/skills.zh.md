@@ -2,9 +2,9 @@
 
 [English](skills.md) | 中文
 
-[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。
+[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。独立的[社区技能 marketplace](../../packages/skill/skill-marketplace) 通过 `ctx.skillMarketplace` 标准化一个已配置的 SkillHub Registry Instance，供浏览器发现；它绝不向 `ctx.skills` 贡献条目，因此仅发现社区条目不会使其变得可调用。
 
-源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
+源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts)、[`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
 
 ## 提供方注册表
 
@@ -241,6 +241,24 @@ interface Config {
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — this section is byte-identical in both language sides of the page. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxskillmarketplace--skillmarketplace"></a>
+
+### `ctx.skillMarketplace` — `SkillMarketplace`
+
+Host-side SkillHub adapter exposed through dsh-owned catalog types.
+
+```ts cordis-catalog
+/**
+ * List one normalized Community Skills page.
+ * @param request - optional query, label, and zero-based pagination.
+ * @param signal - cancellation forwarded to every upstream request.
+ * @returns dsh-owned catalog data; no SkillHub response object escapes.
+ */
+async list(request: CommunitySkillListRequest = {}, signal?: AbortSignal): Promise<CommunitySkillPage>
+```
+
+Source: [`packages/skill/skill-marketplace/src/index.ts:41`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

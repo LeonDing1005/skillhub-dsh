@@ -1,0 +1,90 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "SkillHub API",
+    "description": "Skills Registry Platform",
+    "version": "0.1.0-beta.7"
+  },
+  "paths": {
+    "/api/web/skills": {
+      "get": {
+        "operationId": "search",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "namespace", "in": "query", "schema": { "type": "string" } },
+          { "name": "label", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "default": "newest" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+          { "name": "size", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 20 } }
+        ],
+        "responses": { "200": { "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ApiResponseSearchResponse" } } } } }
+      }
+    },
+    "/api/web/labels": {
+      "get": {
+        "operationId": "listVisibleLabels",
+        "responses": { "200": { "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ApiResponseListSkillLabelDto" } } } } }
+      }
+    },
+    "/api/web/skills/{namespace}/{slug}": {
+      "get": {
+        "operationId": "detail",
+        "responses": { "200": { "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ApiResponseSkillDetailResponse" } } } } }
+      }
+    },
+    "/api/web/skills/{namespace}/{slug}/versions/{version}": {
+      "get": {
+        "operationId": "versionDetail",
+        "responses": { "200": { "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ApiResponseSkillVersionDetailResponse" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/SkillSummaryResponse" } },
+          "total": { "type": "integer", "format": "int64" },
+          "page": { "type": "integer", "format": "int32" },
+          "size": { "type": "integer", "format": "int32" }
+        }
+      },
+      "SkillSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "displayName": { "type": "string" },
+          "summary": { "type": "string" },
+          "downloadCount": { "type": "integer", "format": "int64" },
+          "starCount": { "type": "integer", "format": "int64" },
+          "namespace": { "type": "string" },
+          "publishedVersion": { "$ref": "#/components/schemas/SkillVersionResponse" }
+        }
+      },
+      "SkillDetailResponse": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "ownerDisplayName": { "type": "string" },
+          "namespace": { "type": "string" },
+          "labels": { "type": "array", "items": { "$ref": "#/components/schemas/SkillLabelDto" } }
+        }
+      },
+      "SkillVersionDetailResponse": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "string" },
+          "publishedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SkillLabelDto": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "displayName": { "type": "string" }
+        }
+      }
+    }
+  }
+}

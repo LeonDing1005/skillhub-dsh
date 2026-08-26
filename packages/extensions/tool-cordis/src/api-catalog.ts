@@ -1485,6 +1485,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'skillMarketplace',
+    summary: 'Host-side SkillHub adapter exposed through dsh-owned catalog types.',
+    description: 'Host-side SkillHub adapter exposed through dsh-owned catalog types.',
+    methods: [
+      {
+        signature: 'readonly registryInstanceId: RegistryInstanceId',
+        description: 'Stable configured Registry Instance identity attached to every result.',
+        parameters: [],
+      },
+      {
+        signature: 'async list(request: CommunitySkillListRequest = {}, signal?: AbortSignal): Promise<CommunitySkillPage>',
+        description: 'List one normalized Community Skills page.',
+        parameters: [{ name: 'request', description: 'optional query, label, and zero-based pagination.' }, { name: 'signal', description: 'cancellation forwarded to every upstream request.' }],
+        returns: 'dsh-owned catalog data; no SkillHub response object escapes.',
+      },
+    ],
+  },
+  {
     key: 'skills',
     summary: 'Layered registry of skill providers, the host+per-scope shape the tools registry established.',
     description: 'Layered registry of skill providers, the host+per-scope shape the tools registry established. A registration files into the layer of its calling context\'s scope (scopeOf): host rows and repository plugins land in the global layer, while a plugin mounted by an agent preset\'s standing composition lands in that preset\'s layer. A read merges the global layer with the viewing scope\'s chain — the nearest layer\'s entry wins a duplicate name outright, and the rank order decides duplicates only within one layer. It exposes sorted invocation-neutral summaries and loads full skill bodies on demand.',
@@ -2806,6 +2824,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CommandResult = {\n    readonly kind: \'success\';\n    readonly text?: string;\n    readonly sourceEventSeq?: number;\n} | {\n    readonly kind: \'error\';\n    readonly text: string;\n};',
   },
   {
+    name: 'CommunitySkillIdentity',
+    declaration: 'export interface CommunitySkillIdentity {\n    readonly registryInstanceId: RegistryInstanceId;\n    readonly namespace: string;\n    readonly slug: string;\n    readonly version: string;\n}',
+  },
+  {
+    name: 'CommunitySkillLabel',
+    declaration: 'export interface CommunitySkillLabel {\n    readonly slug: string;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'CommunitySkillListRequest',
+    declaration: 'export interface CommunitySkillListRequest {\n    readonly query?: string;\n    readonly label?: string;\n    readonly page?: number;\n    readonly pageSize?: number;\n}',
+  },
+  {
+    name: 'CommunitySkillPage',
+    declaration: 'export interface CommunitySkillPage {\n    readonly items: readonly CommunitySkillSummary[];\n    readonly labels: readonly CommunitySkillLabel[];\n    readonly total: number;\n    readonly page: number;\n    readonly pageSize: number;\n}',
+  },
+  {
+    name: 'CommunitySkillSummary',
+    declaration: 'export interface CommunitySkillSummary {\n    readonly identity: CommunitySkillIdentity;\n    readonly title: string;\n    readonly description: string;\n    readonly publisher: string;\n    readonly starCount: number;\n    readonly downloadCount: number;\n    readonly labels: readonly string[];\n    readonly publishedAt?: string;\n    readonly isNew: boolean;\n}',
+  },
+  {
     name: 'CompactionAgentContext',
     declaration: 'export interface CompactionAgentContext {\n    session: Session;\n    options: {\n        provider?: string;\n        model?: string;\n    };\n}',
   },
@@ -3576,6 +3614,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'RegistryInstanceId',
+    declaration: 'export type RegistryInstanceId = Branded<\'RegistryInstanceId\'>;',
   },
   {
     name: 'RequestContext',

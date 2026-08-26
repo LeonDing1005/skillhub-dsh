@@ -1899,6 +1899,24 @@ export interface Config {
 
 Source: [`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
 
+<a id="deepseek-aidsh-skill-marketplace"></a>
+
+## `@deepseek-ai/dsh-skill-marketplace`
+
+```ts config-catalog
+/** SkillHub adapter configuration owned by the Host. */
+export interface Config {
+  /** Stable identity independent from the Registry Instance URL. */
+  registryInstanceId: string
+  /** Root URL of the configured SkillHub Registry Instance. */
+  baseUrl: string
+  /** Maximum catalog items accepted per request. */
+  pageSizeLimit?: number
+}
+```
+
+Source: [`packages/skill/skill-marketplace/src/index.ts:25`](../packages/skill/skill-marketplace/src/index.ts)
+
 <a id="deepseek-aidsh-spill-local"></a>
 
 ## `@deepseek-ai/dsh-spill-local`
@@ -3053,6 +3071,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-settings-plugins` ([`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar` ([`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-skill` ([`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-skill-center` ([`packages/client/ui-skill-center/src/index.ts`](../packages/client/ui-skill-center/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-subagent` ([`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-theme` ([`packages/client/ui-theme/src/index.ts`](../packages/client/ui-theme/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))

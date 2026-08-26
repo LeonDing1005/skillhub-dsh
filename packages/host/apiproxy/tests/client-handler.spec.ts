@@ -89,7 +89,11 @@ function scriptedApi(overrides: {
       insertSessionBefore: r => ok(r, { workspace: { workspaceId: 'w1' as never, path: '/t', title: 't', sessionIds: [], createdAt: '0', updatedAt: '0' } }),
       archiveSession: r => ok(r, { archivedSessionIds: [r.payload.sessionId] }),
     },
-    skills: { list: r => ok(r, { skills: [] }), ...overrides.skills },
+    skills: {
+      list: r => ok(r, { skills: [] }),
+      communityList: r => ok(r, { items: [], labels: [], total: 0, page: 0, pageSize: 12 }),
+      ...overrides.skills,
+    },
     agentPresets: {
       list: r => ok(r, { presets: [], authorable: false, hasDocument: false }),
       select: r => ok(r, { agentPreset: r.payload.agentPreset }),
