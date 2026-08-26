@@ -1,0 +1,121 @@
+.root {
+  height: 100%;
+  min-width: 0;
+  overflow: auto;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  height: 72px;
+  padding: 0 32px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-base);
+}
+
+.titleRow,
+.tabs,
+.cardTop,
+.cardFooter,
+.metrics,
+.retry {
+  display: flex;
+  align-items: center;
+}
+
+.titleRow { gap: 10px; }
+.titleRow h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: 0; }
+
+.tabs { align-self: stretch; gap: 8px; }
+.tabs button {
+  position: relative;
+  height: 100%;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.tabs button:disabled { cursor: default; opacity: 0.45; }
+.tabs .activeTab { color: var(--dsw-alias-label-primary); font-weight: 500; }
+.tabs .activeTab::after {
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  height: 2px;
+  background: var(--dsw-alias-brand-primary);
+  content: '';
+}
+
+.content { max-width: 1120px; margin: 0 auto; padding: 28px 32px 48px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 16px; }
+.card {
+  display: flex;
+  min-height: 252px;
+  flex-direction: column;
+  padding: 18px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+.card:hover { border-color: var(--dsw-alias-border-l2); }
+.cardTop { justify-content: space-between; min-height: 32px; }
+.skillIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-brand-primary);
+}
+.newBadge,
+.labels span {
+  border-radius: 5px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 20px;
+  padding: 0 7px;
+}
+.newBadge { color: var(--dsw-alias-state-success-primary); }
+.identity { margin-top: 14px; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+.card h2 { margin: 3px 0 0; font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: 0; overflow-wrap: anywhere; }
+.description {
+  display: -webkit-box;
+  min-height: 44px;
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 22px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.publisher { margin-top: 10px; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+.labels { display: flex; min-height: 20px; margin-top: 10px; gap: 6px; overflow: hidden; }
+.cardFooter { justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 15px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.version { min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.metrics { flex: none; gap: 12px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.metrics > span { display: inline-flex; align-items: center; gap: 3px; }
+.state { display: grid; min-height: 360px; place-content: center; justify-items: center; gap: 16px; color: var(--dsw-alias-label-secondary); font-size: 14px; }
+.retry { gap: 7px; height: 34px; padding: 0 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; cursor: pointer; }
+.retry:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+@media (max-width: 720px) {
+  .header { height: auto; min-height: 64px; align-items: flex-start; flex-direction: column; gap: 4px; padding: 14px 18px 0; }
+  .tabs { height: 40px; }
+  .content { padding: 20px 18px 36px; }
+}

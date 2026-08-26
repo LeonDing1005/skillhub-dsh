@@ -1,0 +1,14 @@
+- main "Skill Center":
+  - img
+  - heading "Skill Center" [level=1]
+  - tablist:
+    - tab "Community Skills" [selected]
+    - tab "My Skills" [disabled]
+  - article:
+    - img
+    - text: New global/weather
+    - heading "weather" [level=2]
+    - paragraph: Retrieve and summarize current weather and forecasts for locations, rain, temperature, and travel planning using an available web tool or wttr.in over HTTPS.
+    - text: Built-in Skill Publisher v1.0.0 0 stars
+    - img
+    - text: "0"

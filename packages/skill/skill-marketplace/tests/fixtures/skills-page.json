@@ -1,0 +1,40 @@
+{
+  "code": 0,
+  "msg": "Fetched successfully",
+  "data": {
+    "items": [
+      {
+        "id": 17,
+        "slug": "weather",
+        "displayName": "weather",
+        "summary": "Retrieve and summarize current weather and forecasts for locations, rain, temperature, and travel planning using an available web tool or wttr.in over HTTPS.",
+        "visibility": "PUBLIC",
+        "status": "ACTIVE",
+        "downloadCount": 0,
+        "starCount": 0,
+        "ratingAvg": 0,
+        "ratingCount": 0,
+        "namespace": "global",
+        "updatedAt": "2026-08-19T08:57:33.537233Z",
+        "canSubmitPromotion": false,
+        "headlineVersion": {
+          "id": 17,
+          "version": "1.0.0",
+          "status": "PUBLISHED"
+        },
+        "publishedVersion": {
+          "id": 17,
+          "version": "1.0.0",
+          "status": "PUBLISHED"
+        },
+        "ownerPreviewVersion": null,
+        "resolutionMode": "PUBLISHED"
+      }
+    ],
+    "total": 17,
+    "page": 0,
+    "size": 1
+  },
+  "timestamp": "2026-08-25T09:35:02.751853251Z",
+  "requestId": "fixture-skills-page"
+}

@@ -16,5 +16,6 @@
 - insert:
     - id: pwsh-local
       name: '@deepseek-ai/dsh-pwsh-local'
-    - id: tool-pwsh
-      name: '@deepseek-ai/dsh-tool-pwsh'
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: false

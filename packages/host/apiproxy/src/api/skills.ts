@@ -20,6 +20,45 @@ export interface SkillEntry {
   readonly modelInvocable: boolean
 }
 
+/** Stable Community Skill identity and card fields owned by the dsh wire. */
+export interface CommunitySkillEntry {
+  readonly registryInstanceId: string
+  readonly namespace: string
+  readonly slug: string
+  readonly version: string
+  readonly title: string
+  readonly description: string
+  readonly publisher: string
+  readonly starCount: number
+  readonly downloadCount: number
+  readonly labels: readonly string[]
+  readonly publishedAt?: string
+  readonly isNew: boolean
+}
+
+/** One Community Skills filter label. */
+export interface CommunitySkillLabelEntry {
+  readonly slug: string
+  readonly title: string
+}
+
+/** Browser-owned filters and pagination for the public catalog. */
+export interface CommunitySkillListPayload {
+  readonly query?: string
+  readonly label?: string
+  readonly page?: number
+  readonly pageSize?: number
+}
+
+/** One page of Community Skills projected for native clients. */
+export interface CommunitySkillListValue {
+  readonly items: readonly CommunitySkillEntry[]
+  readonly labels: readonly CommunitySkillLabelEntry[]
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+}
+
 /**
  * Skill-domain unary methods (the map key skill.* of RpcMethodMap). Listing
  * is the domain's only RPC: invocation itself is a plain `session.prompt`
@@ -30,4 +69,6 @@ export interface SkillEntry {
 export interface SkillsApi {
   /** Lists the user-invocable skill catalog for the session's project. */
   list(request: RpcRequest<{ sessionId: SessionId }>): Promise<RpcResponse<{ skills: readonly SkillEntry[] }>>
+  /** Lists normalized discovery-only entries from the configured Community Registry Instance. */
+  communityList(request: RpcRequest<CommunitySkillListPayload>, signal?: AbortSignal): Promise<RpcResponse<CommunitySkillListValue>>
 }

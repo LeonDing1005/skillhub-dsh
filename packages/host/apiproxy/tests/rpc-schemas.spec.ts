@@ -28,7 +28,10 @@ import {
   workspaceListRequestSchema, workspaceListValueSchema,
   workspaceRenameRequestSchema, workspaceRenameValueSchema, workspaceViewSchema,
 } from '../src/api/workspace.schema.ts'
-import { skillEntrySchema, skillListRequestSchema, skillListValueSchema } from '../src/api/skills.schema.ts'
+import {
+  skillCommunityEntrySchema, skillCommunityListRequestSchema, skillCommunityListValueSchema,
+  skillEntrySchema, skillListRequestSchema, skillListValueSchema,
+} from '../src/api/skills.schema.ts'
 import {
   agentPresetEntrySchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
 } from '../src/api/agent-presets.schema.ts'
@@ -424,6 +427,22 @@ describe('skills domain schemas', () => {
     expect(() => skillEntrySchema.parse({ name: '', description: 'd', modelInvocable: true })).toThrow()
     // modelInvocable is required wire data: an entry without it fails.
     expect(() => skillEntrySchema.parse({ name: 'n', description: 'd' })).toThrow()
+  })
+
+  it('validates the normalized Community catalog without upstream fields', () => {
+    expect(skillCommunityListRequestSchema.parse({ page: 0, pageSize: 12 })).toEqual({ page: 0, pageSize: 12 })
+    expect(() => skillCommunityListRequestSchema.parse({ page: -1 })).toThrow()
+    expect(() => skillCommunityListRequestSchema.parse({ pageSize: 0 })).toThrow()
+    const entry = {
+      registryInstanceId: 'public-skillhub', namespace: 'global', slug: 'weather', version: '1.0.0',
+      title: 'Weather', description: 'Forecasts', publisher: 'Built-in', starCount: 12,
+      downloadCount: 34, labels: ['utilities'], publishedAt: '2026-08-25T00:00:00Z', isNew: true,
+    }
+    expect(skillCommunityEntrySchema.parse(entry)).toEqual(entry)
+    expect(skillCommunityListValueSchema.parse({
+      items: [entry], labels: [{ slug: 'utilities', title: 'Utilities' }], total: 1, page: 0, pageSize: 12,
+    }).items).toEqual([entry])
+    expect(() => skillCommunityEntrySchema.parse({ ...entry, starCount: -1 })).toThrow()
   })
 })
 
