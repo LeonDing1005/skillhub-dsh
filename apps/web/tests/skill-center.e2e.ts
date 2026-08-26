@@ -16,6 +16,7 @@ import { saveFailureShot } from './support.ts'
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/skill-center', import.meta.url))
 const CATALOG_EXPECTED = join(SNAPSHOT_DIR, 'catalog.expected.md')
 const MODE = webSnapshotMode()
+// The catalog golden uses an expired release; unit coverage owns the clock-sensitive New window.
 const RESPONSE_FIXTURE_DIR = fileURLToPath(new URL('../../../packages/skill/skill-marketplace/tests/fixtures/', import.meta.url))
 const RESPONSE_FIXTURES = [
   ['/api/web/skills', 'skills-page'],

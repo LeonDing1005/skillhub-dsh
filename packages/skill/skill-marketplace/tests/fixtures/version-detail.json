@@ -8,7 +8,7 @@
     "changelog": null,
     "fileCount": 3,
     "totalSize": 4927,
-    "publishedAt": "2026-08-19T08:57:33.532872Z",
+    "publishedAt": "2000-01-01T00:00:00Z",
     "parsedMetadataJson": "{\"name\":\"weather\",\"version\":\"1.0.0\"}",
     "manifestJson": "[{\"path\":\"SKILL.md\",\"size\":2936,\"contentType\":\"text/markdown\"}]"
   },
