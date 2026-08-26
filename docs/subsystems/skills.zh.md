@@ -2,9 +2,9 @@
 
 [English](skills.md) | 中文
 
-[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。
+[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）、Host 内部托管包准入库（[dsh-skill-installation](../../packages/skill/skill-installation)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。
 
-源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
+源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts)、[`packages/skill/skill-installation/src/index.ts`](../../packages/skill/skill-installation/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
 
 ## 提供方注册表
 
@@ -83,6 +83,16 @@ Chokidar 会监视现有根目录中直属 bundle 和平铺条目的添加与移
 ## skill 身份
 
 skill 名称为 kebab-case（`^[a-z0-9]+(?:-[a-z0-9]+)*$`）。本地提供方接受目录包（`<name>/SKILL.md`）和扁平 Markdown 文件（`<name>.md`）。嵌套递归的 `**/SKILL.md` 发现不受支持。
+
+## 托管包准入
+
+`ManagedSkillStore` 是 Host 内部库，不是 Cordis 服务或 skill 提供方。它接收一个精确解析的 Community Skill 发布版本及完整 ZIP 字节，在唯一的私有暂存目录中验证归档，并通过一次目录重命名同时发布 `content/` 与 `receipt.json`。它不会让已准入内容变成可调用 skill；该转换由后续的托管提供方负责。
+
+准入接受归档根目录中的 `SKILL.md`，或外包一层目录的包。它拒绝绝对路径、带盘符路径、父目录穿越、反斜杠路径、Windows 设备名与备用数据流名称、可移植名称重复、链接、设备、FIFO、混合根目录及过多条目；压缩字节数、声明的展开字节数和实际解码字节数均受调用方显式提供的限制约束。每个普通文件都必须匹配 Registry Instance 清单中的路径、大小和小写 SHA-256。SkillHub 指纹通过对清单路径排序，并对每个文件的一行 UTF-8 `path:sha256\n` 进行哈希来重新计算。
+
+暂存的 `SKILL.md` 通过文件系统提供方使用的同一个 `parseSkillDocument` 解析，其规范名称必须匹配解析后的目录名称。已提交收据记录 Registry Instance id、远程 namespace 与 slug、适配器、规范源服务器、规范名称、精确版本、已验证清单与指纹、安装时间、启用状态和托管内容位置。返回相同发布版本的幂等结果前，会验证已有收据、条目 mode 以及完整的内容文件与目录集合。不同远程身份不能占用已安装的同一规范名称。
+
+包文件、收据与最外层包目录在最后一次同父目录重命名提交发布前变为只读。此前的任何失败都会删除其唯一私有包。存储格式位于版本目录 `v1`；不受支持、可写、链接、缺失、新增或内容被修改的持久化条目会作为存储损坏失败，不会被修复或提升为有效安装。
 
 ```ts type-equiv
 /** Origin bucket for a skill contribution. The value is prompt-visible metadata, not precedence by itself. */

@@ -2,9 +2,9 @@
 
 English | [中文](skills.zh.md)
 
-The [skill capability family](../../packages/skill) includes the Service Definition ([dsh-skill](../../packages/skill/skill), `ctx.skills`), the local Service Provider ([dsh-skill-filesystem](../../packages/skill/skill-filesystem)), the optional packaged badge provider ([dsh-skill-badge](../../packages/skill/skill-badge)), and the Consumer ([dsh-tool-skill](../../packages/skill/tool-skill)). The registry merges provider catalogs across its host and per-scope layers; providers contribute local or packaged skills; the Consumer owns the initial and replacement catalogs plus the model-facing `skill` tool. Skills are optional instructions, not session events, so their vocabulary lives here rather than in [core.md](core.md).
+The [skill capability family](../../packages/skill) includes the Service Definition ([dsh-skill](../../packages/skill/skill), `ctx.skills`), the local Service Provider ([dsh-skill-filesystem](../../packages/skill/skill-filesystem)), the optional packaged badge provider ([dsh-skill-badge](../../packages/skill/skill-badge)), the Host-internal managed-package admission library ([dsh-skill-installation](../../packages/skill/skill-installation)), and the Consumer ([dsh-tool-skill](../../packages/skill/tool-skill)). The registry merges provider catalogs across its host and per-scope layers; providers contribute local or packaged skills; the Consumer owns the initial and replacement catalogs plus the model-facing `skill` tool. Skills are optional instructions, not session events, so their vocabulary lives here rather than in [core.md](core.md).
 
-Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts), [`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts), [`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts), and [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts).
+Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts), [`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts), [`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts), [`packages/skill/skill-installation/src/index.ts`](../../packages/skill/skill-installation/src/index.ts), and [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts).
 
 ## Provider registry
 
@@ -83,6 +83,16 @@ Chokidar watches existing roots for direct bundle/flat-entry additions and remov
 ## Skill identity
 
 Skill names are kebab-case (`^[a-z0-9]+(?:-[a-z0-9]+)*$`). The local provider accepts directory bundles (`<name>/SKILL.md`) and flat Markdown files (`<name>.md`). Nested recursive `**/SKILL.md` discovery is not supported.
+
+## Managed package admission
+
+`ManagedSkillStore` is a Host-internal library, not a Cordis service or skill provider. It accepts one exact resolved Community Skill release and complete ZIP bytes, validates the archive in a unique private staging directory, and publishes `content/` with `receipt.json` through one directory rename. It does not make admitted content callable; a later managed provider owns that transition.
+
+Admission accepts either `SKILL.md` at the archive root or one wrapper directory. It rejects absolute, drive-qualified, parent-traversing, backslash, Windows device and alternate-stream, duplicate portable, link, device, FIFO, mixed-root, and excessive entries; compressed bytes, declared expanded bytes, and decoded bytes all have explicit caller-supplied limits. Every regular file must match the Registry Instance path, size, and lowercase SHA-256 manifest. The SkillHub fingerprint is recomputed by sorting manifest paths and hashing one UTF-8 `path:sha256\n` row per file.
+
+The staged `SKILL.md` is parsed with `parseSkillDocument`, the same parser used by the filesystem provider, and its canonical name must match the resolved catalog name. A committed receipt records the Registry Instance id, remote namespace and slug, adapter, canonical source server, canonical name, exact version, verified manifest and fingerprint, install time, enabled state, and managed content location. Existing receipts, entry modes, and complete content file and directory sets are validated before an identical release is returned idempotently. A different remote identity cannot claim an already installed canonical name.
+
+Package files, the receipt, and the outer package directory become read-only before the final same-parent directory rename commits publication. Any earlier failure removes its unique private package. The storage format is versioned at `v1`; unsupported, writable, linked, missing, added, or content-modified durable entries fail as store corruption rather than being repaired or promoted.
 
 ```ts type-equiv
 /** Origin bucket for a skill contribution. The value is prompt-visible metadata, not precedence by itself. */

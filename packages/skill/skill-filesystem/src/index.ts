@@ -103,7 +103,8 @@ interface SkillRootEntry {
   path: string
 }
 
-interface ParsedSkill {
+/** Parsed `SKILL.md` fields shared by filesystem-backed admission paths. */
+export interface ParsedSkillDocument {
   name: string
   description: string
   whenToUse?: string
@@ -790,39 +791,54 @@ async function listSkillRootEntriesFromNode(root: SkillRoot, ctx: Context): Prom
   return result
 }
 
-async function parseSkillFile(path: string, ctx: Context, signal?: AbortSignal, trustedHost = false): Promise<ParsedSkill | undefined> {
+async function parseSkillFile(
+  path: string,
+  ctx: Context,
+  signal?: AbortSignal,
+  trustedHost = false,
+): Promise<ParsedSkillDocument | undefined> {
   const raw = await readSkillText(ctx, path, signal, trustedHost)
   signal?.throwIfAborted()
   if (raw === undefined) {
     return undefined
   }
+  try {
+    return parseSkillDocument(raw)
+  } catch (error) {
+    ctx.logger.warn(`skill file ${path} ignored: ${errorMessage(error)}`)
+    return undefined
+  }
+}
+
+/**
+ * Parse one complete `SKILL.md` document with the filesystem provider's public
+ * frontmatter rules. Callers that admit a package can therefore validate the
+ * exact format that later discovery will read without mounting a provider.
+ * @param raw - complete UTF-8 skill document.
+ * @returns normalized metadata, invocation policy, and trimmed Markdown body.
+ * @throws when YAML, required fields, the skill name, or invocation fields are invalid.
+ */
+export function parseSkillDocument(raw: string): ParsedSkillDocument {
   let parsed
   try {
     parsed = parseFrontmatter(raw)
   } catch (error) {
-    ctx.logger.warn(`skill file ${path} ignored: invalid YAML frontmatter: ${errorMessage(error)}`)
-    return undefined
+    throw new Error(`invalid YAML frontmatter: ${errorMessage(error)}`, { cause: error })
   }
-  if (!parsed) {
-    ctx.logger.warn(`skill file ${path} ignored: missing YAML frontmatter`)
-    return undefined
-  }
+  if (!parsed) throw new Error('missing YAML frontmatter')
   const name = stringField(parsed.data, 'name')
   const description = stringField(parsed.data, 'description')
   if (name === undefined || description === undefined) {
-    ctx.logger.warn(`skill file ${path} ignored: frontmatter requires name and description`)
-    return undefined
+    throw new Error('frontmatter requires name and description')
   }
   if (!isSkillName(name)) {
-    ctx.logger.warn(`skill file ${path} ignored: invalid skill name "${name}"`)
-    return undefined
+    throw new Error(`invalid skill name "${name}"`)
   }
   let invocation
   try {
     invocation = parseInvocationPolicy(parsed.data)
   } catch (error) {
-    ctx.logger.warn(`skill file ${path} ignored: invalid invocation frontmatter: ${errorMessage(error)}`)
-    return undefined
+    throw new Error(`invalid invocation frontmatter: ${errorMessage(error)}`, { cause: error })
   }
   return {
     name,
