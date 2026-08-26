@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-当 `github.repository` 不是 `deepseek-harness/deepseek-harness` 时，[CI](../../../../.github/workflows/ci.yml)为 PR 选择 `ubuntu-latest` 和 `windows-latest`。复制仓库的 Linux job 使用适合标准 GitHub 托管 runner 的较低 worker 上限，其中 snapshot replay 串行执行，避免并发 gate 抢占流式 fixture 的资源并触发 provider 重试。规范仓库保留其组织自有 runner、仓库变量和自托管故障切换行为。
+当 `github.repository` 不是 `deepseek-harness/deepseek-harness` 时，[CI](../../../../.github/workflows/ci.yml)为 PR 选择 `ubuntu-latest` 和 `windows-latest`。复制仓库的 Linux job 使用适合标准 GitHub 托管 runner 的较低 worker 上限，其中 snapshot replay 串行执行，避免并发检查抢占流式 fixture 的资源并触发 provider 重试。具备标准 Windows runner 标签的复制仓库可以通过 `DSH_CI_FAILOVER_WINDOWS=selfhosted` 选择其自托管池；该选择由[复制仓库 Windows 故障切换 Agent Note](2026-08-26-copied-repository-windows-failover.md)负责。规范仓库保留其组织自有的默认 runner 和两条自托管故障切换路径。
 
 [Issue policy](../../../../.github/workflows/issue-policy.yml)、[Issue lifecycle](../../../../.github/workflows/issue-lifecycle.yml)和[真实 DeepSeek API e2e](../../../../.github/workflows/e2e.yml)保留其触发器，但 job 仅在规范仓库中运行。复制仓库获得成功跳过的检查，而不会因为缺少 GitHub App、规范 Issue 管理配置或 `DEEPSEEK_API_KEY_EXTERNAL` 而失败。该回退不会把任意 OpenAI 兼容端点视为规范 e2e 工作流所覆盖的外部 DeepSeek API。
 
@@ -26,4 +26,4 @@ Status: implemented
 
 ## 后果
 
-复制仓库可以在标准 GitHub 托管 runner 上执行完整的无密钥 PR 套件，而无需复刻规范基础设施。其 CI 不会声称获得了规范 Issue 自动化或外部 DeepSeek API 测试的覆盖；这些 job 会明确显示为跳过。仓库名称条件成为 CI 部署行为的一部分，因此规范仓库重命名时必须更新该条件及其工作流测试。
+复制仓库可以在标准 GitHub 托管 runner 上执行完整的无密钥 PR 套件，而无需复刻规范基础设施；已经部署的 Windows 池也可以在不修改工作流的情况下被选择。其 CI 不会声称获得了规范 Issue 自动化或外部 DeepSeek API 测试的覆盖；这些 job 会明确显示为跳过。仓库名称条件成为 CI 部署行为的一部分，因此规范仓库重命名时必须更新该条件及其工作流测试。

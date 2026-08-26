@@ -64,14 +64,18 @@ describe('CI workflow', () => {
 
     // windows-native: non-blocking native job with failover, runs windows-complete.
     // Its pool is resolved by the Windows-specific switch.
-    expect(typeof windowsNative['runs-on']).toBe('string')
-    expect(windowsNative['runs-on']).toContain('DSH_CI_FAILOVER_WINDOWS')
-    expect(windowsNative['runs-on']).not.toContain('DSH_CI_FAILOVER_LINUX')
-    expect(windowsNative['runs-on']).toContain('self-hosted')
-    expect(windowsNative['runs-on']).toContain('dsh-win-ci')
-    expect(windowsNative['runs-on']).toContain('dsh-windows-2025-16core')
-    expect(windowsNative['runs-on']).toContain("github.repository != 'deepseek-harness/deepseek-harness'")
-    expect(windowsNative['runs-on']).toContain('windows-latest')
+    const nativeRunner = windowsNative['runs-on']
+    if (typeof nativeRunner !== 'string') throw new TypeError('windows-native runs-on must be an expression')
+    expect(nativeRunner).toContain('DSH_CI_FAILOVER_WINDOWS')
+    expect(nativeRunner).not.toContain('DSH_CI_FAILOVER_LINUX')
+    expect(nativeRunner).toContain('self-hosted')
+    expect(nativeRunner).toContain('dsh-win-ci')
+    expect(nativeRunner).toContain('dsh-windows-2025-16core')
+    expect(nativeRunner).toContain("github.repository != 'deepseek-harness/deepseek-harness'")
+    expect(nativeRunner).toContain('windows-latest')
+    expect(nativeRunner.indexOf('DSH_CI_FAILOVER_WINDOWS')).toBeLessThan(
+      nativeRunner.indexOf("github.repository != 'deepseek-harness/deepseek-harness'"),
+    )
     expect(JSON.stringify(windowsNative.env)).toContain("github.repository != 'deepseek-harness/deepseek-harness' && '2' || '8'")
     expect(windowsNative.name).toBe('windows node 24 / native complete')
     expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
