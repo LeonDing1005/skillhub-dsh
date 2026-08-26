@@ -8,10 +8,10 @@
     "changelog": null,
     "fileCount": 3,
     "totalSize": 4927,
-    "publishedAt": "2026-08-19T08:57:33.532872Z",
+    "publishedAt": "2000-01-01T00:00:00Z",
     "parsedMetadataJson": "{\"name\":\"weather\",\"version\":\"1.0.0\"}",
     "manifestJson": "[{\"path\":\"SKILL.md\",\"size\":2936,\"contentType\":\"text/markdown\"}]"
   },
   "timestamp": "2026-08-25T09:35:22.172852343Z",
-  "requestId": "fixture-version-detail"
+  "requestId": "fixture-version-detail-expired"
 }

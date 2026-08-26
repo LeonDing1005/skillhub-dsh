@@ -22,7 +22,7 @@ const RESPONSE_FIXTURES = [
   ['/api/web/skills', 'skills-page'],
   ['/api/web/labels', 'labels'],
   ['/api/web/skills/global/weather', 'skill-detail'],
-  ['/api/web/skills/global/weather/versions/1.0.0', 'version-detail'],
+  ['/api/web/skills/global/weather/versions/1.0.0', 'version-detail-expired'],
 ] as const
 
 interface CatalogGeometry {
