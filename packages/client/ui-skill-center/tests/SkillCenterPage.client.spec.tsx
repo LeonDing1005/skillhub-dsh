@@ -75,4 +75,19 @@ describe('SkillCenterPage', () => {
     expect(screen.getByRole('tab', { name: 'Community Skills' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole<HTMLButtonElement>('tab', { name: 'My Skills' }).disabled).toBe(true)
   })
+
+  it.each(['resolve', 'reject'] as const)('ignores a catalog %s after unmount', async (settlement) => {
+    let settle!: (value: typeof page) => void
+    let fail!: (reason: Error) => void
+    const pending = new Promise<typeof page>((resolve, reject) => {
+      settle = resolve
+      fail = reject
+    })
+    const view = render(<SkillCenterPage load={() => pending} t={t} />)
+    view.unmount()
+
+    if (settlement === 'resolve') settle(page)
+    else fail(new Error('late failure'))
+    await expect(pending.catch(() => page)).resolves.toBe(page)
+  })
 })

@@ -433,6 +433,15 @@ describe('unary round trip (handler ⇄ client, no network)', () => {
     expect(skills.result).toEqual({ ok: true, value: { skills: [{ name: 'commit-helper', description: 'Git commits', modelInvocable: true }] } })
   })
 
+  it('round-trips skill.communityList through the wire form', async () => {
+    const c = client()
+    const catalog = await c.skills.communityList({ query: 'weather', page: 0, pageSize: 12 })
+    expect(catalog.result).toEqual({
+      ok: true,
+      value: { items: [], labels: [], total: 0, page: 0, pageSize: 12 },
+    })
+  })
+
   it('lets host.pickDirectory finish after the 30-second default unary deadline', async () => {
     vi.useFakeTimers()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
