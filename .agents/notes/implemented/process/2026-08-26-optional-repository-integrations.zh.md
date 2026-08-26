@@ -12,7 +12,7 @@ Issue Policy 还有独立的可移植性问题：可信工作流代码必须查�
 
 ## 决策
 
-Issue 管理配置命名 `LeonDing1005/skillhub-dsh`，Issue Lifecycle token 也限定到该仓库。Issue Policy 使用事件 token，不需要可选应用凭据，因此仍为必需检查。
+Issue 管理配置命名 `LeonDing1005/skillhub-dsh`，Issue Lifecycle token 也限定到该仓库。Issue Policy 使用事件 token，不需要可选应用凭据，因此仍为必需检查。当仓库不提供 Issue field-values 接口时，policy 发出 notice 并将 Priority 视为未设置；认证失败和其他 API 错误仍会阻塞。
 
 Project Lifecycle 自动化只在已配置 `DSH_ISSUE_APP_CLIENT_ID` 时运行。缺少 client ID 时，工作流发出 notice 并成功结束，不创建 token，也不修改 ProjectV2。一旦 client ID 存在，token 创建仍会明确失败：private key、安装、仓库授权或 Project 权限缺失或无效都会使工作流失败。
 
@@ -32,4 +32,4 @@ Project Lifecycle 自动化只在已配置 `DSH_ISSUE_APP_CLIENT_ID` 时运行�
 
 ## 后果
 
-没有仓库 secret 的 checkout 可以通过无密钥检查完成合并，同时 GitHub 会记录被省略集成的 notice。维护者必须配置 GitHub App 与 DeepSeek secret，才能获得 ProjectV2 状态转换和真实 provider 覆盖。配置完成后，错误凭据和真实集成回归仍然是可见的失败。
+没有仓库 secret 或 Issue field values 的 checkout 可以通过受支持的检查完成合并，同时 GitHub 会记录被省略集成和元数据的 notice。维护者必须配置 GitHub App 与 DeepSeek secret，才能获得 ProjectV2 状态转换和真实 provider 覆盖。配置完成后，错误凭据和真实集成回归仍然是可见的失败。

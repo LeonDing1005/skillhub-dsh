@@ -415,13 +415,25 @@ async function graphql(query, variables) {
   return result.data
 }
 
-async function issueSnapshot(number, status = undefined) {
+/**
+ * Read one Issue and its repository-supported metadata.
+ * @param {number} number Issue number.
+ * @param {string|null|undefined} status Known Project status, or undefined to query it.
+ * @returns {Promise<object|null>} Issue metadata, or null when the number identifies a pull request.
+ */
+export async function issueSnapshot(number, status = undefined) {
   const issue = await api(`/repos/${config.organization}/${config.repository}/issues/${number}`)
   if (issue.pull_request) return null
   const values = await api(
     `/repos/${config.organization}/${config.repository}/issues/${number}/issue-field-values?per_page=100`,
+    { allow404: true },
   )
-  const field = (name) => values.find((value) => value.issue_field_name === name)
+  if (values === null) {
+    process.stdout.write(
+      `::notice::#${number} 不提供 Issue field values；Priority 按未设置处理。\n`,
+    )
+  }
+  const field = (name) => values?.find((value) => value.issue_field_name === name)
   return {
     number,
     nodeId: issue.node_id,
