@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-当 `github.repository` 不是 `deepseek-harness/deepseek-harness` 时，[CI](../../../../.github/workflows/ci.yml)为 PR 选择 `ubuntu-latest` 和 `windows-latest`。复制仓库的 Linux job 使用适合标准 GitHub 托管 runner 的较低 worker 上限。规范仓库保留其组织自有 runner、仓库变量和自托管故障切换行为。
+当 `github.repository` 不是 `deepseek-harness/deepseek-harness` 时，[CI](../../../../.github/workflows/ci.yml)为 PR 选择 `ubuntu-latest` 和 `windows-latest`。复制仓库的 Linux job 使用适合标准 GitHub 托管 runner 的较低 worker 上限，其中 snapshot replay 串行执行，避免并发 gate 抢占流式 fixture 的资源并触发 provider 重试。规范仓库保留其组织自有 runner、仓库变量和自托管故障切换行为。
 
 [Issue policy](../../../../.github/workflows/issue-policy.yml)、[Issue lifecycle](../../../../.github/workflows/issue-lifecycle.yml)和[真实 DeepSeek API e2e](../../../../.github/workflows/e2e.yml)保留其触发器，但 job 仅在规范仓库中运行。复制仓库获得成功跳过的检查，而不会因为缺少 GitHub App、规范 Issue 管理配置或 `DEEPSEEK_API_KEY_EXTERNAL` 而失败。该回退不会把任意 OpenAI 兼容端点视为规范 e2e 工作流所覆盖的外部 DeepSeek API。
 

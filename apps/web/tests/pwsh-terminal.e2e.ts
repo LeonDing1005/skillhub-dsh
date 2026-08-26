@@ -16,13 +16,14 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   fixtureUserPrompts, launchWebScaffold, seedSession, webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, REPO_ROOT, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/pwsh-terminal', import.meta.url))
 const SEED = join(SNAPSHOT_DIR, 'seed.jsonl')
@@ -31,6 +32,17 @@ const OVERLAY = fileURLToPath(new URL('./pwsh-terminal.overlay.yml', import.meta
 const PROMPT = 'Run a PowerShell command that fails, then stop.'
 const SEED_ID = 'pwsh-terminal-web-e2e'
 const MODE = webSnapshotMode()
+
+it('enables the shipped PowerShell tool without duplicating its loader id', () => {
+  const rows = composeEntries([
+    loadOverlayPatches('pwsh web e2e', join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml')),
+    loadOverlayPatches('pwsh web e2e', join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml')),
+    loadOverlayPatches('pwsh web e2e', OVERLAY),
+  ])
+  const ids = rows.flatMap(row => row.id === undefined ? [] : [row.id])
+  expect(new Set(ids).size).toBe(ids.length)
+  expect(rows.find(row => row.id === 'tool-pwsh')).toMatchObject({ disabled: false })
+})
 
 // The overlay swaps the shipped bash executor for @deepseek-ai/dsh-pwsh-local;
 // a host without a usable `pwsh` cannot boot it, so the lane self-skips,

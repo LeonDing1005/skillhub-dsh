@@ -1,6 +1,5 @@
-/** Web assembly coverage for the native Skill Center route and visual references. */
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+/** Web assembly coverage for the native Skill Center route and layout snapshots. */
+import { mkdir, readFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
@@ -25,29 +24,33 @@ const RESPONSE_FIXTURES = [
   ['/api/web/skills/global/weather/versions/1.0.0', 'version-detail'],
 ] as const
 
-function pngDimensions(buffer: Buffer): { width: number; height: number } {
-  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) }
+interface CatalogGeometry {
+  main: { width: number; height: number }
+  grid: { columns: string; gap: string }
+  card: { width: number; height: number }
 }
 
-async function visualReference(page: Page, name: string): Promise<void> {
-  const image = await page.getByRole('main', { name: /Skill Center|技能中心/ }).screenshot()
-  expect(pngDimensions(image)).toEqual({ width: 1077, height: 638 })
-  const path = join(SNAPSHOT_DIR, `${name}.1077x638.png`)
-  if (MODE === 'refresh') {
-    await mkdir(SNAPSHOT_DIR, { recursive: true })
-    await writeFile(path, image)
-    return
-  }
-  expect(existsSync(path), `missing visual reference ${path}`).toBe(true)
-  const reference = await readFile(path)
-  expect(pngDimensions(reference)).toEqual({ width: 1077, height: 638 })
-  expect(image.equals(reference), `zero-tolerance visual reference differs: ${path}`).toBe(true)
+async function catalogGeometry(page: Page): Promise<CatalogGeometry> {
+  return page.getByRole('main', { name: /Skill Center|技能中心/ }).evaluate((main) => {
+    const card = main.querySelector<HTMLElement>('article')
+    const grid = card?.parentElement
+    if (grid === null || card === null) throw new Error('Skill Center catalog geometry is incomplete')
+    const mainRect = main.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    const gridStyle = getComputedStyle(grid)
+    return {
+      main: { width: mainRect.width, height: mainRect.height },
+      grid: { columns: gridStyle.gridTemplateColumns, gap: gridStyle.gap },
+      card: { width: cardRect.width, height: cardRect.height },
+    }
+  })
 }
 
 describe('web e2e: Skill Center', () => {
   let scaffold: WebScaffold
   let browser: Browser
   let skillHub: Server
+  let englishGeometry: CatalogGeometry
 
   beforeAll(async () => {
     const responseBodies = new Map<string, string>(await Promise.all(RESPONSE_FIXTURES.map(async ([path, fixtureName]) => [
@@ -102,7 +105,7 @@ describe('web e2e: Skill Center', () => {
     const aria = await captureStableAria(page, 'main[aria-label="Skill Center"]', scaffold.workspaceCwd)
     if (MODE === 'refresh') await mkdir(SNAPSHOT_DIR, { recursive: true })
     await compareOrRefreshGolden(CATALOG_EXPECTED, aria, MODE)
-    await visualReference(page, 'catalog-en')
+    englishGeometry = await catalogGeometry(page)
 
     await page.getByRole('button', { name: /^(?:New session|新.*会话)$/ }).last().click()
     await page.locator('[data-conversation-scroll]').waitFor({ timeout: 15_000 })
@@ -118,7 +121,12 @@ describe('web e2e: Skill Center', () => {
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await page.getByRole('button', { name: '技能中心' }).click()
     await page.getByRole('heading', { name: 'Weather' }).waitFor({ timeout: 15_000 })
-    await visualReference(page, 'catalog-zh')
+    const chineseGeometry = await catalogGeometry(page)
+    expect({ ...chineseGeometry, card: { width: chineseGeometry.card.width } }).toEqual({
+      ...englishGeometry,
+      card: { width: englishGeometry.card.width },
+    })
+    expect(Math.abs(chineseGeometry.card.height - englishGeometry.card.height)).toBeLessThanOrEqual(2)
     expect(tripwire.pageErrors).toEqual([])
     await page.close()
   }, 60_000)

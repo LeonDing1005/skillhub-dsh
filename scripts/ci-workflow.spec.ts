@@ -106,6 +106,7 @@ describe('CI workflow', () => {
       expect(job['runs-on']).toContain('ubuntu-latest')
       expect(JSON.stringify(job.env)).toContain("github.repository != 'deepseek-harness/deepseek-harness'")
     }
+    expect(JSON.stringify(node24Consumers.env)).toContain("github.repository != 'deepseek-harness/deepseek-harness' && '1'")
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')

@@ -10,7 +10,7 @@ The canonical repository's pull-request workflows use organization-owned Linux a
 
 ## Decision
 
-[CI](../../../../.github/workflows/ci.yml) selects `ubuntu-latest` and `windows-latest` for pull requests when `github.repository` is not `deepseek-harness/deepseek-harness`. The copied-repository Linux jobs use lower worker limits appropriate for standard GitHub-hosted runners. The canonical repository retains its organization-owned runners, repository variables, and self-hosted failover behavior.
+[CI](../../../../.github/workflows/ci.yml) selects `ubuntu-latest` and `windows-latest` for pull requests when `github.repository` is not `deepseek-harness/deepseek-harness`. The copied-repository Linux jobs use lower worker limits appropriate for standard GitHub-hosted runners, including serial snapshot replay so concurrent gates cannot starve streaming fixtures and trigger provider retries. The canonical repository retains its organization-owned runners, repository variables, and self-hosted failover behavior.
 
 [Issue policy](../../../../.github/workflows/issue-policy.yml), [Issue lifecycle](../../../../.github/workflows/issue-lifecycle.yml), and [real DeepSeek API e2e](../../../../.github/workflows/e2e.yml) retain their triggers but run their jobs only in the canonical repository. A copied repository receives successful skipped checks instead of failures caused by an absent GitHub App, canonical issue-management configuration, or `DEEPSEEK_API_KEY_EXTERNAL`. The fallback does not treat an arbitrary OpenAI-compatible endpoint as the external DeepSeek API covered by the canonical e2e workflow.
 
