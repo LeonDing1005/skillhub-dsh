@@ -165,6 +165,26 @@ describe('dsh-skill-filesystem plugin exports', () => {
     expect(SkillFileSystem.name).toBe('skill-filesystem')
     expect(SkillFileSystem.inject).toEqual(['skills'])
   })
+
+  it('parses complete skill documents through the shared filesystem rules', () => {
+    expect(SkillFileSystem.parseSkillDocument([
+      '---',
+      'name: shared-parser',
+      'description: Shared parser',
+      'disable-model-invocation: true',
+      'user-invocable: false',
+      '---',
+      '',
+      'Use this body.',
+      '',
+    ].join('\n'))).toMatchObject({
+      name: 'shared-parser',
+      description: 'Shared parser',
+      invocation: { modelInvocable: false, userInvocable: false },
+      content: 'Use this body.',
+    })
+    expect(() => SkillFileSystem.parseSkillDocument('no frontmatter')).toThrow('missing YAML frontmatter')
+  })
 })
 
 describe('FileSystemSkillProvider', () => {

@@ -10,6 +10,7 @@ This family discovers reusable agent instructions and exposes them to the model 
 | [`skill-badge/`](skill-badge/README.md) | Contributes the optional bundled dsh badge skill | registers on `ctx.skills` |
 | [`skill-filesystem/`](skill-filesystem/README.md) | Discovers skills from local filesystems | registers on `ctx.skills` |
 | [`skill-marketplace/`](skill-marketplace/README.md) | Normalizes one configured SkillHub catalog for discovery | `ctx.skillMarketplace` |
+| [`skill-installation/`](skill-installation/README.md) | Admits and stores immutable managed Community Skill packages | none (Host-internal library) |
 | [`tool-skill/`](tool-skill/README.md) | Publishes the skill catalog and model-facing loader | registers on `ctx.tools` |
 
 The marketplace service is deliberately separate from `ctx.skills`: Community entries are discovery-only and cannot enter a model catalog or loader until a later installation decision defines that lifecycle. The invocable skill capability remains outside the core control spine and can use local, embedded, or remote providers without changing the model-facing contract.

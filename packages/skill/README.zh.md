@@ -10,6 +10,7 @@
 | [`skill-badge/`](skill-badge/README.md) | 贡献可选的内置 dsh 徽章 skill | 注册到 `ctx.skills` |
 | [`skill-filesystem/`](skill-filesystem/README.md) | 从本地文件系统发现 skill | 注册到 `ctx.skills` |
 | [`skill-marketplace/`](skill-marketplace/README.md) | 标准化一个已配置的 SkillHub 目录以供发现 | `ctx.skillMarketplace` |
+| [`skill-installation/`](skill-installation/README.md) | 准入并存储不可变的托管 Community Skill 包 | 无（Host 内部库） |
 | [`tool-skill/`](tool-skill/README.md) | 发布 skill 目录和面向模型的 loader | 注册到 `ctx.tools` |
 
 Marketplace 服务刻意与 `ctx.skills` 分离：社区条目仅用于发现，在后续安装决策定义生命周期之前，不能进入模型目录或 loader。可调用 skill 能力位于核心控制主干之外，可以使用本地、嵌入式或远程提供方，而无需更改面向模型的约定。
