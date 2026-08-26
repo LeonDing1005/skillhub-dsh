@@ -46,13 +46,18 @@ jobs:
           persist-credentials: false
       - name: Create project token
         id: app-token
+        if: ${{ vars.DSH_ISSUE_APP_CLIENT_ID != '' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ vars.DSH_ISSUE_APP_CLIENT_ID }}
           private-key: ${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}
-          owner: deepseek-harness
-          repositories: deepseek-harness
+          owner: LeonDing1005
+          repositories: skillhub-dsh
       - name: Handle repository event
+        if: ${{ vars.DSH_ISSUE_APP_CLIENT_ID != '' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/issue-management/policy.mjs lifecycle
+      - name: Skip unconfigured project lifecycle
+        if: ${{ vars.DSH_ISSUE_APP_CLIENT_ID == '' }}
+        run: echo "::notice::Issue lifecycle is disabled because DSH_ISSUE_APP_CLIENT_ID is not configured."
