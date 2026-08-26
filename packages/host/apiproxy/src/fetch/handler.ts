@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto'
 import type { z } from 'zod'
 import type { ApiProxy, MuxFrame, HostFrame } from '../api/index.ts'
-import { sessionLogQuerySchema } from '../api/downloads.schema.ts'
+import { communitySkillDownloadQuerySchema, sessionLogQuerySchema } from '../api/downloads.schema.ts'
 import type { RequestPayload, ResponseValue, RpcMethodMap } from '../api/rpc-map.ts'
 import type { ClientRequest, RpcError, RpcRequest, RpcResponse, ServerRequest, ServerResponse } from '../api/rpc.ts'
 import { RpcId } from '../api/rpc.ts'
@@ -43,7 +43,9 @@ import {
   workspaceListRequestSchema,
   workspaceRenameRequestSchema,
 } from '../api/workspace.schema.ts'
-import { skillCommunityListRequestSchema, skillListRequestSchema } from '../api/skills.schema.ts'
+import {
+  skillCommunityGetRequestSchema, skillCommunityListRequestSchema, skillListRequestSchema,
+} from '../api/skills.schema.ts'
 import {
   agentPresetCopyRequestSchema, agentPresetListRequestSchema, agentPresetOpenDocumentRequestSchema,
   agentPresetReadRequestSchema, agentPresetRemoveRequestSchema, agentPresetSelectRequestSchema,
@@ -118,6 +120,7 @@ const UNARY_ROUTES: UnaryRoutes = {
   'workspace.archiveSession': { schema: workspaceArchiveSessionRequestSchema, invoke: (api, r) => api.workspace.archiveSession(r) },
   'skill.list': { schema: skillListRequestSchema, invoke: (api, r) => api.skills.list(r) },
   'skill.communityList': { schema: skillCommunityListRequestSchema, invoke: (api, r, signal) => api.skills.communityList(r, signal) },
+  'skill.communityGet': { schema: skillCommunityGetRequestSchema, invoke: (api, r, signal) => api.skills.communityGet(r, signal) },
   'agentPreset.list': { schema: agentPresetListRequestSchema, invoke: (api, r) => api.agentPresets.list(r) },
   'agentPreset.select': { schema: agentPresetSelectRequestSchema, invoke: (api, r) => api.agentPresets.select(r) },
   'agentPreset.read': { schema: agentPresetReadRequestSchema, invoke: (api, r) => api.agentPresets.read(r) },
@@ -269,6 +272,11 @@ export function toFetchHandler(api: ApiProxy): { fetch: typeof fetch } {
         if (req.method === 'GET') return response
         await response.body?.cancel()
         return new Response(null, { status: response.status, headers: response.headers })
+      }
+      if (path === '/api/skill.download' && req.method === 'GET') {
+        const parsed = communitySkillDownloadQuerySchema.safeParse(Object.fromEntries(url.searchParams))
+        if (!parsed.success) return new Response('missing or invalid Community Skill identity', { status: 400 })
+        return api.downloads.communitySkill(parsed.data, req.signal)
       }
 
       if (req.method !== 'POST' || !path.startsWith('/api/')) {

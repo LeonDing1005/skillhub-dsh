@@ -256,9 +256,25 @@ Host-side SkillHub adapter exposed through dsh-owned catalog types.
  * @returns dsh-owned catalog data; no SkillHub response object escapes.
  */
 async list(request: CommunitySkillListRequest = {}, signal?: AbortSignal): Promise<CommunitySkillPage>
+
+/**
+ * Inspect one exact Community Skill release.
+ * @param identity - configured Registry Instance and exact upstream release identity.
+ * @param signal - cancellation forwarded to every upstream request.
+ * @returns Host-normalized detail including the exact SKILL.md source.
+ */
+async get(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDetail>
+
+/**
+ * Stream one exact Community Skill artifact without changing local installation state.
+ * @param identity - configured Registry Instance and exact upstream release identity.
+ * @param signal - cancellation forwarded to every upstream request and body stream.
+ * @returns artifact metadata and upstream response stream.
+ */
+async download(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDownload>
 ```
 
-Source: [`packages/skill/skill-marketplace/src/index.ts:41`](../../packages/skill/skill-marketplace/src/index.ts)
+Source: [`packages/skill/skill-marketplace/src/index.ts:71`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

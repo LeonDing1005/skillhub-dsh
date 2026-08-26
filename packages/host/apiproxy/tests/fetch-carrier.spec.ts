@@ -223,7 +223,28 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
         return { rpcId: request.rpcId, result: { ok: true, value: { skills: [{ name: 'commit-helper', description: 'Git commits', modelInvocable: true }] } } }
       },
       async communityList(request) {
-        return { rpcId: request.rpcId, result: { ok: true, value: { items: [], labels: [], total: 0, page: 0, pageSize: 12 } } }
+        return { rpcId: request.rpcId, result: { ok: true, value: { items: [], labels: [], total: 0, page: 0, pageSize: 12, freshness: 'fresh' as const } } }
+      },
+      async communityGet(request) {
+        return {
+          rpcId: request.rpcId,
+          result: {
+            ok: true,
+            value: {
+              ...request.payload,
+              canonicalName: 'weather-toolkit',
+              title: 'Weather',
+              description: 'Forecasts.',
+              publisher: 'Publisher',
+              starCount: 1,
+              downloadCount: 2,
+              skillMarkdown: '# Weather',
+              versions: [{ version: request.payload.version, downloadAvailable: true }],
+              files: [{ path: 'SKILL.md', size: 9, contentType: 'text/markdown', sha256: 'abc' }],
+              installCommand: `skillhub install ${request.payload.slug} --namespace ${request.payload.namespace} --version ${request.payload.version}`,
+            },
+          },
+        }
       },
     },
     goals: {
@@ -293,6 +314,11 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       return message.rpcId === 'known' ? { accepted: true } : { accepted: false, reason: 'not-pending' }
     },
     downloads: {
+      async communitySkill() {
+        return new Response('zip bytes', {
+          headers: { 'content-disposition': 'attachment; filename="weather-toolkit-1.0.0.zip"' },
+        })
+      },
       async sessionLog() {
         return new Response('stub', { status: 404 })
       },
@@ -435,11 +461,32 @@ describe('unary round trip (handler ⇄ client, no network)', () => {
 
   it('round-trips skill.communityList through the wire form', async () => {
     const c = client()
-    const catalog = await c.skills.communityList({ query: 'weather', page: 0, pageSize: 12 })
+    const catalog = await c.skills.communityList({ query: 'weather', sort: 'newest', page: 0, pageSize: 12 })
     expect(catalog.result).toEqual({
       ok: true,
-      value: { items: [], labels: [], total: 0, page: 0, pageSize: 12 },
+      value: { items: [], labels: [], total: 0, page: 0, pageSize: 12, freshness: 'fresh' },
     })
+  })
+
+  it('round-trips skill.communityGet through the wire form', async () => {
+    const detail = await client().skills.communityGet({
+      registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
+    })
+    expect(detail.result).toMatchObject({
+      ok: true,
+      value: {
+        canonicalName: 'weather-toolkit',
+        installCommand: 'skillhub install weather --namespace global --version 1.0.0',
+      },
+    })
+  })
+
+  it('serves exact Community Skill GET downloads outside the RPC envelope', async () => {
+    const handler = toFetchHandler(fakeApi())
+    const url = 'http://host/api/skill.download?registryInstanceId=public-main&namespace=global&slug=weather&version=1.0.0'
+    const get = await handler.fetch(new Request(url))
+    expect(get.headers.get('content-disposition')).toContain('weather-toolkit-1.0.0.zip')
+    await expect(get.text()).resolves.toBe('zip bytes')
   })
 
   it('lets host.pickDirectory finish after the 30-second default unary deadline', async () => {

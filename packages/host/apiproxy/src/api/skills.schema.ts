@@ -7,7 +7,10 @@ import { z } from 'zod'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 import { sessionIdSchema } from './sessions.schema.ts'
-import type { CommunitySkillEntry, CommunitySkillLabelEntry, SkillEntry } from './skills.ts'
+import type {
+  CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillFileEntry,
+  CommunitySkillIdentityPayload, CommunitySkillLabelEntry, CommunitySkillVersionEntry, SkillEntry,
+} from './skills.ts'
 
 /** SkillEntry row of skill.list. */
 export const skillEntrySchema = z.object({
@@ -53,6 +56,7 @@ export const skillCommunityLabelSchema = z.object({
 export const skillCommunityListRequestSchema = z.object({
   query: z.string().optional(),
   label: z.string().optional(),
+  sort: z.string().optional(),
   page: z.number().int().nonnegative().optional(),
   pageSize: z.number().int().positive().optional(),
 }) satisfies z.ZodType<Wire<RequestPayload<'skill.communityList'>>>
@@ -64,4 +68,46 @@ export const skillCommunityListValueSchema = z.object({
   total: z.number().int().nonnegative(),
   page: z.number().int().nonnegative(),
   pageSize: z.number().int().positive(),
+  freshness: z.union([z.literal('fresh'), z.literal('stale')]),
+  lastSuccessfulAt: z.string().optional(),
 }) satisfies z.ZodType<Wire<ResponseValue<'skill.communityList'>>>
+
+/** Exact Community Skill release identity. */
+export const skillCommunityIdentitySchema = z.object({
+  registryInstanceId: z.string().min(1),
+  namespace: z.string().min(1),
+  slug: z.string().min(1),
+  version: z.string().min(1),
+}) satisfies z.ZodType<Wire<CommunitySkillIdentityPayload>>
+
+const skillCommunityVersionSchema = z.object({
+  version: z.string().min(1),
+  publishedAt: z.string().optional(),
+  downloadAvailable: z.boolean(),
+}) satisfies z.ZodType<Wire<CommunitySkillVersionEntry>>
+
+const skillCommunityFileSchema = z.object({
+  path: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  contentType: z.string(),
+  sha256: z.string(),
+}) satisfies z.ZodType<Wire<CommunitySkillFileEntry>>
+
+/** skill.communityGet request payload. */
+export const skillCommunityGetRequestSchema = skillCommunityIdentitySchema satisfies z.ZodType<Wire<RequestPayload<'skill.communityGet'>>>
+
+/** skill.communityGet response value. */
+export const skillCommunityGetValueSchema = skillCommunityIdentitySchema.extend({
+  canonicalName: z.string().min(1),
+  title: z.string(),
+  description: z.string(),
+  publisher: z.string(),
+  starCount: z.number().int().nonnegative(),
+  downloadCount: z.number().int().nonnegative(),
+  publishedAt: z.string().optional(),
+  examplePrompt: z.string().optional(),
+  skillMarkdown: z.string(),
+  versions: z.array(skillCommunityVersionSchema),
+  files: z.array(skillCommunityFileSchema),
+  installCommand: z.string(),
+}) satisfies z.ZodType<Wire<CommunitySkillDetailValue>>

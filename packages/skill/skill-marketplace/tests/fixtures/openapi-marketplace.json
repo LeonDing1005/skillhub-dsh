@@ -37,6 +37,36 @@
         "operationId": "versionDetail",
         "responses": { "200": { "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ApiResponseSkillVersionDetailResponse" } } } } }
       }
+    },
+    "/api/web/skills/{namespace}/{slug}/versions": {
+      "get": {
+        "operationId": "listVersions",
+        "responses": { "200": { "description": "Version page" } }
+      }
+    },
+    "/api/web/skills/{namespace}/{slug}/versions/{version}/files": {
+      "get": {
+        "operationId": "listVersionFiles",
+        "responses": { "200": { "description": "Release files" } }
+      }
+    },
+    "/api/web/skills/{namespace}/{slug}/versions/{version}/file": {
+      "get": {
+        "operationId": "getVersionFile",
+        "responses": { "200": { "description": "Raw release file" } }
+      }
+    },
+    "/api/web/skills/{namespace}/{slug}/resolve": {
+      "get": {
+        "operationId": "resolveVersion",
+        "responses": { "200": { "description": "Resolved release" } }
+      }
+    },
+    "/api/web/skills/{namespace}/{slug}/versions/{version}/download": {
+      "get": {
+        "operationId": "downloadVersion",
+        "responses": { "200": { "description": "Exact release archive" } }
+      }
     }
   },
   "components": {
@@ -66,8 +96,12 @@
         "type": "object",
         "properties": {
           "slug": { "type": "string" },
+          "displayName": { "type": "string" },
+          "summary": { "type": "string" },
           "ownerDisplayName": { "type": "string" },
           "namespace": { "type": "string" },
+          "starCount": { "type": "integer", "format": "int64" },
+          "downloadCount": { "type": "integer", "format": "int64" },
           "labels": { "type": "array", "items": { "$ref": "#/components/schemas/SkillLabelDto" } }
         }
       },
@@ -75,7 +109,35 @@
         "type": "object",
         "properties": {
           "version": { "type": "string" },
-          "publishedAt": { "type": "string", "format": "date-time" }
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "parsedMetadataJson": { "type": "string" }
+        }
+      },
+      "SkillVersionResponse": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "string" },
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "downloadAvailable": { "type": "boolean" }
+        }
+      },
+      "SkillFileResponse": {
+        "type": "object",
+        "properties": {
+          "filePath": { "type": "string" },
+          "fileSize": { "type": "integer", "format": "int64" },
+          "contentType": { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      },
+      "ResolveVersionResponse": {
+        "type": "object",
+        "properties": {
+          "namespace": { "type": "string" },
+          "slug": { "type": "string" },
+          "version": { "type": "string" },
+          "matched": { "type": "boolean" },
+          "downloadUrl": { "type": "string" }
         }
       },
       "SkillLabelDto": {

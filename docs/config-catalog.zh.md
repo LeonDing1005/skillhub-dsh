@@ -1914,10 +1914,20 @@ export interface Config {
   baseUrl: string
   /** Maximum catalog items accepted per request. */
   pageSizeLimit?: number
+  /** Age below which a successful list result is returned without revalidation. */
+  freshTtlMs?: number
+  /** Maximum age at which a successful result may cover an upstream outage. */
+  staleTtlMs?: number
+  /** Number of local retries after an HTTP 429 response, from zero through ten. */
+  rateLimitRetries?: number
+  /** Initial delay for exponential HTTP 429 retry. */
+  rateLimitBackoffMs?: number
+  /** Maximum UTF-8 bytes accepted from an exact release SKILL.md. */
+  skillMarkdownMaxBytes?: number
 }
 ```
 
-来源：[`packages/skill/skill-marketplace/src/index.ts:25`](../packages/skill/skill-marketplace/src/index.ts)
+来源：[`packages/skill/skill-marketplace/src/index.ts:44`](../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 

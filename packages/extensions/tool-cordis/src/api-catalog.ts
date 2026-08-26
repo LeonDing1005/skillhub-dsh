@@ -1500,6 +1500,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'request', description: 'optional query, label, and zero-based pagination.' }, { name: 'signal', description: 'cancellation forwarded to every upstream request.' }],
         returns: 'dsh-owned catalog data; no SkillHub response object escapes.',
       },
+      {
+        signature: 'async get(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDetail>',
+        description: 'Inspect one exact Community Skill release.',
+        parameters: [{ name: 'identity', description: 'configured Registry Instance and exact upstream release identity.' }, { name: 'signal', description: 'cancellation forwarded to every upstream request.' }],
+        returns: 'Host-normalized detail including the exact SKILL.md source.',
+      },
+      {
+        signature: 'async download(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDownload>',
+        description: 'Stream one exact Community Skill artifact without changing local installation state.',
+        parameters: [{ name: 'identity', description: 'configured Registry Instance and exact upstream release identity.' }, { name: 'signal', description: 'cancellation forwarded to every upstream request and body stream.' }],
+        returns: 'artifact metadata and upstream response stream.',
+      },
     ],
   },
   {
@@ -2824,8 +2836,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CommandResult = {\n    readonly kind: \'success\';\n    readonly text?: string;\n    readonly sourceEventSeq?: number;\n} | {\n    readonly kind: \'error\';\n    readonly text: string;\n};',
   },
   {
+    name: 'CommunitySkillDetail',
+    declaration: 'export interface CommunitySkillDetail {\n    readonly identity: CommunitySkillIdentity;\n    readonly canonicalName: string;\n    readonly title: string;\n    readonly description: string;\n    readonly publisher: string;\n    readonly starCount: number;\n    readonly downloadCount: number;\n    readonly publishedAt?: string;\n    readonly examplePrompt?: string;\n    readonly skillMarkdown: string;\n    readonly versions: readonly CommunitySkillVersion[];\n    readonly files: readonly CommunitySkillFile[];\n    readonly installCommand: string;\n}',
+  },
+  {
+    name: 'CommunitySkillDownload',
+    declaration: 'export interface CommunitySkillDownload {\n    readonly filename: string;\n    readonly contentType: string;\n    readonly contentLength?: number;\n    readonly body: ReadableStream<Uint8Array>;\n}',
+  },
+  {
+    name: 'CommunitySkillFile',
+    declaration: 'export interface CommunitySkillFile {\n    readonly path: string;\n    readonly size: number;\n    readonly contentType: string;\n    readonly sha256: string;\n}',
+  },
+  {
     name: 'CommunitySkillIdentity',
     declaration: 'export interface CommunitySkillIdentity {\n    readonly registryInstanceId: RegistryInstanceId;\n    readonly namespace: string;\n    readonly slug: string;\n    readonly version: string;\n}',
+  },
+  {
+    name: 'CommunitySkillIdentityPayload',
+    declaration: 'export interface CommunitySkillIdentityPayload {\n    readonly registryInstanceId: string;\n    readonly namespace: string;\n    readonly slug: string;\n    readonly version: string;\n}',
   },
   {
     name: 'CommunitySkillLabel',
@@ -2833,15 +2861,19 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CommunitySkillListRequest',
-    declaration: 'export interface CommunitySkillListRequest {\n    readonly query?: string;\n    readonly label?: string;\n    readonly page?: number;\n    readonly pageSize?: number;\n}',
+    declaration: 'export interface CommunitySkillListRequest {\n    readonly query?: string;\n    readonly label?: string;\n    readonly sort?: string;\n    readonly page?: number;\n    readonly pageSize?: number;\n}',
   },
   {
     name: 'CommunitySkillPage',
-    declaration: 'export interface CommunitySkillPage {\n    readonly items: readonly CommunitySkillSummary[];\n    readonly labels: readonly CommunitySkillLabel[];\n    readonly total: number;\n    readonly page: number;\n    readonly pageSize: number;\n}',
+    declaration: 'export interface CommunitySkillPage {\n    readonly items: readonly CommunitySkillSummary[];\n    readonly labels: readonly CommunitySkillLabel[];\n    readonly total: number;\n    readonly page: number;\n    readonly pageSize: number;\n    readonly freshness: \'fresh\' | \'stale\';\n    readonly lastSuccessfulAt?: string;\n}',
   },
   {
     name: 'CommunitySkillSummary',
     declaration: 'export interface CommunitySkillSummary {\n    readonly identity: CommunitySkillIdentity;\n    readonly title: string;\n    readonly description: string;\n    readonly publisher: string;\n    readonly starCount: number;\n    readonly downloadCount: number;\n    readonly labels: readonly string[];\n    readonly publishedAt?: string;\n    readonly isNew: boolean;\n}',
+  },
+  {
+    name: 'CommunitySkillVersion',
+    declaration: 'export interface CommunitySkillVersion {\n    readonly version: string;\n    readonly publishedAt?: string;\n    readonly downloadAvailable: boolean;\n}',
   },
   {
     name: 'CompactionAgentContext',
@@ -3033,7 +3065,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DownloadsApi',
-    declaration: 'export interface DownloadsApi {\n    sessionLog(request: {\n        sessionId: SessionId;\n        includeDescendants?: boolean;\n    }, signal: AbortSignal): Promise<Response>;\n}',
+    declaration: 'export interface DownloadsApi {\n    sessionLog(request: {\n        sessionId: SessionId;\n        includeDescendants?: boolean;\n    }, signal: AbortSignal): Promise<Response>;\n    communitySkill(request: CommunitySkillIdentityPayload, signal: AbortSignal): Promise<Response>;\n}',
   },
   {
     name: 'DshEnvironment',

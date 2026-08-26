@@ -40,7 +40,9 @@ import {
   workspaceListValueSchema,
   workspaceRenameValueSchema,
 } from '../api/workspace.schema.ts'
-import { skillCommunityListValueSchema, skillListValueSchema } from '../api/skills.schema.ts'
+import {
+  skillCommunityGetValueSchema, skillCommunityListValueSchema, skillListValueSchema,
+} from '../api/skills.schema.ts'
 import {
   agentPresetCopyValueSchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
   agentPresetReadValueSchema, agentPresetRemoveValueSchema, agentPresetSelectValueSchema,
@@ -124,6 +126,7 @@ export interface IApiClient {
   skills: {
     list(payload: RequestPayload<'skill.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.list'>>>
     communityList(payload: RequestPayload<'skill.communityList'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.communityList'>>>
+    communityGet(payload: RequestPayload<'skill.communityGet'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.communityGet'>>>
   }
   agentPresets: {
     list(payload: RequestPayload<'agentPreset.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'agentPreset.list'>>>
@@ -201,6 +204,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'workspace.archiveSession': workspaceArchiveSessionValueSchema,
   'skill.list': skillListValueSchema,
   'skill.communityList': skillCommunityListValueSchema,
+  'skill.communityGet': skillCommunityGetValueSchema,
   'agentPreset.list': agentPresetListValueSchema,
   'agentPreset.select': agentPresetSelectValueSchema,
   'agentPreset.read': agentPresetReadValueSchema,
@@ -458,6 +462,7 @@ export abstract class AbstractApiClient implements IApiClient {
   readonly skills: IApiClient['skills'] = {
     list: (payload, signal) => this.callUnary('skill.list', payload, signal),
     communityList: (payload, signal) => this.callUnary('skill.communityList', payload, signal),
+    communityGet: (payload, signal) => this.callUnary('skill.communityGet', payload, signal),
   }
 
   // Annotated like every sibling, and load-bearing rather than cosmetic:

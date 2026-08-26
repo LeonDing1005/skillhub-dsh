@@ -18,7 +18,9 @@ Settings 分节中的 `reasoningEffort` 在 agent-default-model 插件配置中�
 
 ## 约定层（`/api`）
 
-`skill.communityList` 是仅用于发现的社区技能 wire。可选的 Host `ctx.skillMarketplace` 服务只投影注册表实例 id、命名空间、slug、精确版本、标题、描述、发布者、星标数、下载数、标签、可信发布时间和派生的“新上架”标记。浏览器不会收到 SkillHub URL、凭据、上游响应类型或 Host 路径。该方法独立于按 Session 寻址的 `skill.list` 可调用目录，且绝不把社区条目注册到其中。
+`skill.communityList` 是仅用于发现的社区技能 wire。请求携带查询、标签、排序和分页字段。可选的 Host `ctx.skillMarketplace` 服务只投影注册表实例 id、命名空间、slug、精确版本、标题、描述、发布者、星标数、下载数、标签、可信发布时间、派生的“新上架”标记和缓存新鲜度元数据。缓存结果过期时使用带类型的 `skill-marketplace-unavailable` 错误。浏览器不会收到 SkillHub URL、凭据、上游响应类型或 Host 路径。该方法独立于按 Session 寻址的 `skill.list` 可调用目录，且绝不把社区条目注册到其中。
+
+`skill.communityGet` 返回标准化后的精确发布元数据、版本、文件、可选 `metadata.examplePrompt` 和原始 `SKILL.md`。精确字节保持在 JSON-RPC 之外：`GET /api/skill.download?registryInstanceId=…&namespace=…&slug=…&version=…` 流式返回经 Host 核验的 ZIP 发布版本，并使用含规范名称/版本的附件文件名。该下载界面绝不修改安装收据或 `ctx.skills`。
 
 协议消息组成一个四象限可辨识联合：发起方 × 请求／响应，与物理通道解耦。四种消息分别是 `ClientRequest`（POST `/api/<method>` 的请求体）、`ServerResponse`（该 POST 的响应体）、`ServerRequest`（SSE（Server-Sent Events）帧）和 `ClientResponse`（POST `/api/respond` 的请求体）。响应始终回显对应请求的 `rpcId`，绝不签发新值。方法的参数与返回值结构只存在于领域接口签名（`SessionsApi`、`HostApi`、`EventsApi`）中；`RpcMethodMap` 注册方法，其他所有位置均通过 `RequestPayload<K>`／`ResponseValue<K>` 派生。Zod schema 以 `satisfies z.ZodType<Wire<T>>` 锚定类型，并分两层解析：先解析信封，再解析业务载荷，随后按方法分发。业务错误由 `RpcResult` 的错误分支承载（`RpcErrorDetailsMap` 封闭错误码集合）；HTTP 状态只表达载体层结果。每个 `/api` POST 都必须声明 `application/json` 媒体类型——否则在分发前即以 415 拒绝，因此跨站「简单请求」（浏览器不经 CORS 预检就会发出）永远无法盲目执行有副作用的方法。
 

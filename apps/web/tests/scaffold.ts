@@ -197,6 +197,12 @@ export interface LaunchOptions {
     baseUrl: string
     /** Stable Registry Instance identity projected onto every catalog item. */
     registryInstanceId: string
+    /** Fresh-cache duration used by recovery scenarios. */
+    freshTtlMs?: number
+    /** Stale-cache maximum age used by recovery scenarios. */
+    staleTtlMs?: number
+    /** Initial local 429 retry delay used by recovery scenarios. */
+    rateLimitBackoffMs?: number
   }
   /**
    * Replay fixture (session.jsonl) served by the inserted dsh-llm-replay row
@@ -396,6 +402,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
           baseUrl: options.skillHub.baseUrl,
           registryInstanceId: options.skillHub.registryInstanceId,
           pageSizeLimit: 20,
+          ...(options.skillHub.freshTtlMs === undefined ? {} : { freshTtlMs: options.skillHub.freshTtlMs }),
+          ...(options.skillHub.staleTtlMs === undefined ? {} : { staleTtlMs: options.skillHub.staleTtlMs }),
+          ...(options.skillHub.rateLimitBackoffMs === undefined ? {} : { rateLimitBackoffMs: options.skillHub.rateLimitBackoffMs }),
         },
       }],
     // The roster's `roots` is an assembly fact AppCLIEntry resolves and patches

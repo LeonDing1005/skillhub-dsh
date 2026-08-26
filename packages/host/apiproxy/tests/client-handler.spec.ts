@@ -91,7 +91,20 @@ function scriptedApi(overrides: {
     },
     skills: {
       list: r => ok(r, { skills: [] }),
-      communityList: r => ok(r, { items: [], labels: [], total: 0, page: 0, pageSize: 12 }),
+      communityList: r => ok(r, { items: [], labels: [], total: 0, page: 0, pageSize: 12, freshness: 'fresh' }),
+      communityGet: r => ok(r, {
+        ...r.payload,
+        canonicalName: r.payload.slug,
+        title: r.payload.slug,
+        description: '',
+        publisher: '',
+        starCount: 0,
+        downloadCount: 0,
+        skillMarkdown: '',
+        versions: [{ version: r.payload.version, downloadAvailable: true }],
+        files: [],
+        installCommand: `skillhub install ${r.payload.slug} --namespace ${r.payload.namespace} --version ${r.payload.version}`,
+      }),
       ...overrides.skills,
     },
     agentPresets: {
@@ -134,7 +147,10 @@ function scriptedApi(overrides: {
     },
     events: { mux: () => empty<MuxFrame>(), host: () => empty<HostFrame>(), ...overrides.events },
     respond: overrides.respond ?? (() => Promise.resolve({ accepted: false as const, reason: 'not-pending' as const })),
-    downloads: { sessionLog: async () => new Response('stub', { status: 404 }) },
+    downloads: {
+      communitySkill: async () => new Response('stub', { status: 404 }),
+      sessionLog: async () => new Response('stub', { status: 404 }),
+    },
   }
 }
 

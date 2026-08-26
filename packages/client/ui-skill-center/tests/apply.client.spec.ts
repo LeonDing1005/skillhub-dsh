@@ -10,7 +10,7 @@ import { apply as nodeApply } from '@deepseek-ai/dsh-client-ui-skill-center'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-skill-center/client'
 import { en } from '../src/client/locales.ts'
 
-const emptyPage = { items: [], labels: [], total: 0, page: 0, pageSize: 12 }
+const emptyPage = { items: [], labels: [], total: 0, page: 0, pageSize: 12, freshness: 'fresh' as const }
 
 afterEach(cleanup)
 
@@ -28,10 +28,11 @@ async function bench() {
   const locale = new LocaleRuntime(ctx)
   const layout = { openPage: vi.fn() }
   const communityList = vi.fn().mockResolvedValue({ result: { ok: true, value: emptyPage } })
+  const communityGet = vi.fn().mockResolvedValue({ result: { ok: true, value: { canonicalName: 'weather' } } })
   ctx.provide('locale', locale)
   ctx.provide('layout', layout as never)
-  ctx.provide('connection', { api: { skills: { communityList } } } as never)
-  return { ctx, slots, locale, layout, communityList }
+  ctx.provide('connection', { api: { skills: { communityList, communityGet } } } as never)
+  return { ctx, slots, locale, layout, communityList, communityGet }
 }
 
 describe('ui-skill-center apply', () => {
@@ -66,13 +67,20 @@ describe('ui-skill-center apply', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const pageEntry = b.slots.entries('shell.page')[0]!
     const actionEntry = b.slots.entries('sidebar.footer.action')[0]!
-    const { load } = (pageEntry.inject as () => {
-      load: (signal: AbortSignal) => Promise<typeof emptyPage>
+    const { load, loadDetail } = (pageEntry.inject as () => {
+      load: (request: { sort: string; page: number; pageSize: number }, signal: AbortSignal) => Promise<typeof emptyPage>
+      loadDetail: (
+        identity: { registryInstanceId: string; namespace: string; slug: string; version: string },
+        signal: AbortSignal,
+      ) => Promise<unknown>
     })()
     const signal = new AbortController().signal
 
-    await expect(load(signal)).resolves.toEqual(emptyPage)
-    expect(b.communityList).toHaveBeenCalledWith({ page: 0, pageSize: 12 }, signal)
+    await expect(load({ sort: 'newest', page: 0, pageSize: 12 }, signal)).resolves.toEqual(emptyPage)
+    expect(b.communityList).toHaveBeenCalledWith({ sort: 'newest', page: 0, pageSize: 12 }, signal)
+    const identity = { registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0' }
+    await expect(loadDetail(identity, signal)).resolves.toEqual({ canonicalName: 'weather' })
+    expect(b.communityGet).toHaveBeenCalledWith(identity, signal)
     const { open } = (actionEntry.inject as () => { open: () => void })()
     open()
     expect(b.layout.openPage).toHaveBeenCalledWith('skill-center')
@@ -96,7 +104,9 @@ describe('ui-skill-center apply', () => {
     })
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const entry = b.slots.entries('shell.page')[0]!
-    const { load } = (entry.inject as () => { load: (signal: AbortSignal) => Promise<unknown> })()
-    await expect(load(new AbortController().signal)).rejects.toThrow('catalog unavailable')
+    const { load } = (entry.inject as () => {
+      load: (request: { page: number }, signal: AbortSignal) => Promise<unknown>
+    })()
+    await expect(load({ page: 0 }, new AbortController().signal)).rejects.toThrow('catalog unavailable')
   })
 })

@@ -56,7 +56,8 @@ export type { JobView } from './jobs.ts'
 export type { WorkspaceApi, WorkspaceId, WorkspaceView } from './workspace.ts'
 export type {
   CommunitySkillEntry, CommunitySkillLabelEntry, CommunitySkillListPayload,
-  CommunitySkillListValue, SkillsApi, SkillEntry,
+  CommunitySkillListValue, CommunitySkillIdentityPayload, CommunitySkillDetailValue,
+  CommunitySkillFileEntry, CommunitySkillVersionEntry, SkillsApi, SkillEntry,
 } from './skills.ts'
 export type { AgentPresetsApi, AgentPresetEntry } from './agent-presets.ts'
 export type { EventsApi, MuxFrame, HostFrame, QueuedInboxItem, ToolCallView, ToolEventView, ToolResultView } from './events.ts'

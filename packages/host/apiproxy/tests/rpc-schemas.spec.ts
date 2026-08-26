@@ -441,6 +441,7 @@ describe('skills domain schemas', () => {
     expect(skillCommunityEntrySchema.parse(entry)).toEqual(entry)
     expect(skillCommunityListValueSchema.parse({
       items: [entry], labels: [{ slug: 'utilities', title: 'Utilities' }], total: 1, page: 0, pageSize: 12,
+      freshness: 'fresh',
     }).items).toEqual([entry])
     expect(() => skillCommunityEntrySchema.parse({ ...entry, starCount: -1 })).toThrow()
   })
