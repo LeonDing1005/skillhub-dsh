@@ -242,6 +242,32 @@ describe('E2B e2e workflow', () => {
   })
 })
 
+describe('DeepSeek API e2e workflow', () => {
+  it('skips the live suite explicitly when its optional repository secret is absent', () => {
+    const workflow = loadWorkflow('.github/workflows/e2e.yml')
+    const e2e = workflowJob(workflow, 'e2e')
+    if (!Array.isArray(e2e.steps)) throw new TypeError('E2E workflow must define steps')
+
+    const steps = e2e.steps.filter(isRecord)
+    const detect = steps.find(step => step.name === 'Detect DeepSeek API key')
+    const build = steps.find(step => step.name === 'Build (lib for the e2e example bins)')
+    const tests = steps.find(step => step.name === 'E2E tests (real DeepSeek API)')
+    const preflight = steps.find(step => step.name === 'Preflight (require DEEPSEEK_API_KEY)')
+
+    expect(preflight).toBeUndefined()
+    expect(detect).toMatchObject({
+      id: 'api-key',
+      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+    })
+    expect(detect?.run).toContain('configured=false')
+    expect(build?.if).toBe("steps.api-key.outputs.configured == 'true'")
+    expect(tests).toMatchObject({
+      if: "steps.api-key.outputs.configured == 'true'",
+      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+    })
+  })
+})
+
 describe('Python release workflows', () => {
   it('keeps complete wheel validation separate from protected public publication', () => {
     const workflow = loadWorkflow('.github/workflows/python-release.yml')
@@ -379,7 +405,40 @@ describe('Python release workflows', () => {
 })
 
 describe('Issue lifecycle workflow', () => {
-  it('uses explicit review handoff events only in the canonical repository', () => {
+  it('targets this repository and skips project automation until its GitHub App is configured', () => {
+    const config: unknown = JSON.parse(
+      readFileSync(resolve(root, '.github/issue-management/config.json'), 'utf8'),
+    )
+    const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
+    const lifecycleJob = workflowJob(lifecycle, 'lifecycle')
+    if (!Array.isArray(lifecycleJob.steps)) {
+      throw new TypeError('Issue lifecycle workflow must define steps')
+    }
+
+    const steps = lifecycleJob.steps.filter(isRecord)
+    const token = steps.find(step => step.name === 'Create project token')
+    const handler = steps.find(step => step.name === 'Handle repository event')
+    const skipped = steps.find(step => step.name === 'Skip unconfigured project lifecycle')
+
+    expect(config).toMatchObject({
+      organization: 'LeonDing1005',
+      repository: 'skillhub-dsh',
+    })
+    expect(token).toMatchObject({
+      if: "${{ vars.DSH_ISSUE_APP_CLIENT_ID != '' }}",
+      with: {
+        owner: 'LeonDing1005',
+        repositories: 'skillhub-dsh',
+      },
+    })
+    expect(handler?.if).toBe("${{ vars.DSH_ISSUE_APP_CLIENT_ID != '' }}")
+    expect(skipped).toMatchObject({
+      if: "${{ vars.DSH_ISSUE_APP_CLIENT_ID == '' }}",
+    })
+    expect(skipped?.run).toContain('DSH_ISSUE_APP_CLIENT_ID')
+  })
+
+  it('uses explicit review handoff events only in this repository', () => {
     const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
     const lifecyclePullRequest = workflowEvent(lifecycle, 'pull_request')
     const lifecycleReview = workflowEvent(lifecycle, 'pull_request_review')
@@ -391,9 +450,9 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
     expect(lifecycleJob.if).toBe(
-      "${{ github.repository == 'deepseek-harness/deepseek-harness' && (github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')) }}",
+      "${{ github.repository == 'LeonDing1005/skillhub-dsh' && (github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')) }}",
     )
-    expect(workflowJob(policy, 'policy').if).toBe("github.repository == 'deepseek-harness/deepseek-harness'")
+    expect(workflowJob(policy, 'policy').if).toBe("github.repository == 'LeonDing1005/skillhub-dsh'")
     expect(policyPullRequest.types).toContain('ready_for_review')
   })
 })
@@ -403,7 +462,7 @@ describe('Real DeepSeek API workflow', () => {
     const workflow = loadWorkflow('.github/workflows/e2e.yml')
     const e2e = workflowJob(workflow, 'e2e')
 
-    expect(e2e.if).toContain('github.repository == \'deepseek-harness/deepseek-harness\'')
+    expect(e2e.if).toContain('github.repository == \'LeonDing1005/skillhub-dsh\'')
     expect(e2e.if).toContain("github.event_name != 'pull_request'")
     expect(e2e.if).toContain('github.event.pull_request.head.repo.fork')
     expect(JSON.stringify(e2e.steps)).toContain('DEEPSEEK_API_KEY_EXTERNAL')

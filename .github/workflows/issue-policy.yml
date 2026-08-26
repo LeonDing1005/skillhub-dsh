@@ -14,7 +14,7 @@ permissions:
 jobs:
   policy:
     name: Issue policy
-    if: github.repository == 'deepseek-harness/deepseek-harness'
+    if: github.repository == 'LeonDing1005/skillhub-dsh'
     runs-on: ubuntu-latest
     steps:
       - name: Check out trusted policy
