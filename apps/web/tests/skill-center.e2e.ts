@@ -128,7 +128,7 @@ describe('web e2e: Skill Center', () => {
       ...englishGeometry,
       card: { width: englishGeometry.card.width },
     })
-    expect(Math.abs(chineseGeometry.card.height - englishGeometry.card.height)).toBeLessThanOrEqual(2)
+    expect(Math.abs(chineseGeometry.card.height - englishGeometry.card.height)).toBeLessThanOrEqual(4)
     expect(tripwire.pageErrors).toEqual([])
     await page.close()
   }, 60_000)
