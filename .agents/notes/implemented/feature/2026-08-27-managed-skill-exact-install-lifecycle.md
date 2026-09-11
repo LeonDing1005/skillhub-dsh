@@ -16,7 +16,7 @@ Operation records live in `v1/operations/`, separate from package receipts. A ru
 
 Recovery creates the private roots, removes abandoned staging directories and `.admitting-*` package directories, validates complete package receipts and immutable content, deletes stale running operation records and dead target locks, and keeps only completed operation records whose target receipt still verifies. Recovery never promotes partial content, guesses at remote state, or reconstructs a completed operation from staging data. A corrupt completed operation record or corrupt package fails as typed corruption instead of being repaired.
 
-`ManagedSkillStore.recover()` is intentionally useful on its own: it reconciles package storage without interpreting operation idempotency. The lifecycle service composes it and then reconciles operation records. This split lets later enable, disable, update, rollback, and uninstall operations share the package verifier without treating every receipt read as an install operation replay.
+`ManagedSkillStore.recover()` is intentionally useful on its own: it reconciles package storage without interpreting operation idempotency. The lifecycle service composes it and then reconciles operation records. This split lets enable, disable, update, rollback, and uninstall operations share the package verifier without treating every receipt read as an install operation replay.
 
 Successful install results expose only a receipt projection safe for Host/RPC translation: source server and managed content path stay out of the result. Callers that need local paths use verified store receipts inside the Host. Resolver failures are reported as `RELEASE_UNAVAILABLE`, while a completed package whose idempotency record cannot be persisted fails as `OPERATION_RECORD_CORRUPT` instead of returning a success that cannot replay after restart.
 
@@ -30,6 +30,6 @@ Successful install results expose only a receipt projection safe for Host/RPC tr
 
 ## Consequences
 
-Exact install has a durable retry point and a restart recovery rule without expanding the browser, RPC, or `ctx.skills` surfaces. Update, rollback, enable, disable, uninstall, tombstones, provider contribution, and Skill Center mutation UI remain separate lifecycle steps.
+Exact install has a durable retry point and a restart recovery rule without expanding the browser, RPC, or `ctx.skills` surfaces. Update, enable, disable, and uninstall reuse the same lifecycle record design in [the lifecycle mutation decision](2026-08-28-managed-skill-lifecycle-mutations.md); rollback, tombstones, provider contribution, and Skill Center mutation UI remain separate lifecycle steps.
 
 Unit coverage pins successful exact install, safe result projection, post-restart idempotent replay, idempotency-key target conflict, live same-target operation rejection across service instances, failed resolver retry, remote release drift rejection, safe operation-record errors, and startup cleanup of staging, `.admitting-*`, stale running operation records, and dead target locks.

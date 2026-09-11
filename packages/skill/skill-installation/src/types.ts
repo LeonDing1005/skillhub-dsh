@@ -50,6 +50,21 @@ export interface ManagedSkillInstallRequest {
   readonly idempotencyKey: string
 }
 
+/** Exact installed package mutation request supplied by a Host caller. */
+export interface ManagedSkillLifecycleRequest {
+  readonly identity: CommunitySkillIdentity
+  readonly version: string
+  readonly idempotencyKey: string
+}
+
+/** Exact managed update request supplied by a Host caller. */
+export interface ManagedSkillUpdateRequest {
+  readonly identity: CommunitySkillIdentity
+  readonly fromVersion: string
+  readonly toVersion: string
+  readonly idempotencyKey: string
+}
+
 /** Host adapter that reacquires exact Community Skill releases for installation. */
 export interface ManagedSkillReleaseResolver {
   /**
@@ -72,6 +87,34 @@ export interface ManagedSkillInstallResult {
   readonly receipt: ManagedSkillInstallReceipt
 }
 
+/** Successful durable result for one managed update operation. */
+export interface ManagedSkillUpdateResult {
+  readonly operation: 'update'
+  readonly receipt: ManagedSkillInstallReceipt
+  readonly previousReceipt: ManagedSkillInstallReceipt
+}
+
+/** Successful durable result for enable or disable. */
+export interface ManagedSkillEnablementResult {
+  readonly operation: 'enable' | 'disable'
+  readonly receipt: ManagedSkillInstallReceipt
+}
+
+/** Successful durable result for uninstall. */
+export interface ManagedSkillUninstallResult {
+  readonly operation: 'uninstall'
+  readonly identity: CommunitySkillIdentity
+  readonly version: string
+  readonly removed: boolean
+}
+
+/** Successful durable result for any managed lifecycle mutation. */
+export type ManagedSkillLifecycleResult =
+  | ManagedSkillInstallResult
+  | ManagedSkillUpdateResult
+  | ManagedSkillEnablementResult
+  | ManagedSkillUninstallResult
+
 /** Install-result receipt fields safe for Host/RPC projection. */
 export type ManagedSkillInstallReceipt = Omit<ManagedSkillReceipt, 'sourceServer' | 'managedLocation'>
 
@@ -93,7 +136,7 @@ export interface ManagedSkillReceipt {
   readonly manifest: readonly VerifiedSkillFile[]
   readonly fingerprint: string
   readonly installedAt: string
-  readonly enabled: true
+  readonly enabled: boolean
   readonly managedLocation: string
 }
 

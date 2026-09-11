@@ -16,7 +16,7 @@ Status: implemented
 
 恢复会创建私有根目录，移除遗留 staging 目录和 `.admitting-*` 包目录，验证完整包 receipt 与不可变内容，删除过期 running 操作记录和死亡目标锁，并只保留目标 receipt 仍能验证的 completed 操作记录。恢复绝不会提升部分内容、猜测远程状态，或从 staging 数据重建 completed 操作。损坏的 completed 操作记录或损坏包会作为类型化损坏失败，而不是被修复。
 
-`ManagedSkillStore.recover()` 刻意保持独立可用：它只协调包存储，不解释操作幂等性。生命周期服务组合它，然后协调操作记录。这个拆分让后续启用、禁用、更新、回滚和卸载操作可以共享包验证器，而不会把每次 receipt 读取都当作一次安装操作重放。
+`ManagedSkillStore.recover()` 刻意保持独立可用：它只协调包存储，不解释操作幂等性。生命周期服务组合它，然后协调操作记录。这个拆分让启用、禁用、更新、回滚和卸载操作可以共享包验证器，而不会把每次 receipt 读取都当作一次安装操作重放。
 
 成功安装结果只公开适合 Host/RPC 转换的安全 receipt 投影：源服务器和托管内容路径不会进入结果。需要本地路径的调用方只在 Host 内使用已验证的存储 receipt。resolver 失败会报告为 `RELEASE_UNAVAILABLE`；已完成包但无法持久化幂等记录时会以 `OPERATION_RECORD_CORRUPT` 失败，而不是返回一个重启后无法重放的成功。
 
@@ -30,6 +30,6 @@ Status: implemented
 
 ## 后果
 
-精确安装拥有持久重试点和重启恢复规则，而不扩大浏览器、RPC 或 `ctx.skills` 表面。更新、回滚、启用、禁用、卸载、tombstone、provider 贡献和 Skill Center 变更 UI 仍是独立生命周期步骤。
+精确安装拥有持久重试点和重启恢复规则，而不扩大浏览器、RPC 或 `ctx.skills` 表面。更新、启用、禁用和卸载通过[生命周期变更决策](2026-08-28-managed-skill-lifecycle-mutations.md)复用同一生命周期记录设计；回滚、tombstone、provider 贡献和 Skill Center 变更 UI 仍是独立生命周期步骤。
 
 单元覆盖固定了成功精确安装、安全结果投影、重启后的幂等重放、幂等键目标冲突、跨服务实例的 live 同目标操作拒绝、失败 resolver 后重试、远程发布版本漂移拒绝、安全操作记录错误，以及启动时清理 staging、`.admitting-*`、过期 running 操作记录和死亡目标锁。

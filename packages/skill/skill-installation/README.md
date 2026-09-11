@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Host-only admission, exact install, and immutable storage for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records install operation results for idempotent Host retry. It registers no Cordis service and does not contribute installed content to `ctx.skills`.
+Host-only admission, lifecycle operations, and immutable storage for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records lifecycle operation results for idempotent Host retry. It registers no Cordis service and does not contribute installed content to `ctx.skills`.
 
 ## API
 
@@ -65,13 +65,15 @@ The receipt records the Registry Instance and remote identity, adapter and sourc
 
 `ManagedSkillAdmissionError.code` distinguishes invalid requests, archive and limit failures, manifest, fingerprint, skill, and identity failures, immutable-release and canonical-name conflicts, release unavailability, in-progress operations, corrupt durable state, and commit failures. Callers may translate these codes for their own Host or wire API; messages contain operator-readable context but no credentials or package content.
 
-## Exact install lifecycle
+## Lifecycle operations
 
-`ManagedInstallationService` wraps `ManagedSkillStore` for the first Host lifecycle operation: installing one exact Community Skill release after user confirmation. The caller supplies the immutable Registry Instance identity, exact version, and idempotency key; the service asks its `ManagedSkillReleaseResolver` to reacquire that same release and rejects any identity or version drift before archive admission. The resolver owns transport and authentication; this package owns local validation, durable receipt publication, and operation replay.
+`ManagedInstallationService` wraps `ManagedSkillStore` for Host lifecycle operations on exact Community Skill releases. The caller supplies the immutable Registry Instance identity, exact version, and idempotency key; install and update ask the `ManagedSkillReleaseResolver` to reacquire that same release and reject any identity or version drift before archive admission. The resolver owns transport and authentication; this package owns local validation, durable receipt publication, receipt enablement state, package removal, and operation replay.
 
-Install operation records live beside the package store under `v1/operations/`, separately from package receipts. A running record reserves the caller's idempotency key before remote resolution starts, and a per-target owner-pid lock under `v1/operations/targets/` rejects same-target operations from another service instance while the owner is still alive. A completed record stores the package target key after `ManagedSkillStore.admit()` has returned a durable receipt. Reusing the same idempotency key for the same target returns the completed result without calling the resolver after restart; reusing that key for another target is an `IDEMPOTENCY_KEY_CONFLICT`. A different idempotency key for the same target is rejected with `OPERATION_IN_PROGRESS` while another install is live, then may return the already committed receipt once the first operation completes.
+Operation records live beside the package store under `v1/operations/`, separately from package receipts. A running record reserves the caller's idempotency key before the mutation starts, and a per-target owner-pid lock under `v1/operations/targets/` rejects same-target operations from another service instance while the owner is still alive. A completed record stores the package target key and the replayable result after the mutation has reached its durable point. Reusing the same idempotency key for the same operation and target returns the completed result after restart; reusing that key for another operation or target is an idempotency conflict. A different idempotency key for the same target is rejected with `OPERATION_IN_PROGRESS` while another lifecycle operation is live.
 
-Startup recovery creates the private roots, removes abandoned staging directories and `.admitting-*` package directories, validates complete receipts and immutable content, removes stale running operation records and dead target locks, and keeps only completed operation records whose receipts still verify. Recovery never promotes partial package data. Corrupt durable packages or completed operation records fail as typed corruption so the Host can stop exposing unsafe state instead of guessing. Successful install results return a safe receipt projection that omits the source server and managed content path; callers that need local package paths read verified store receipts inside the Host.
+Install admits one exact release and returns a safe receipt projection. Update requires the requested source version to be installed, admits the requested target version, disables the source version, and enables the new version only after both package receipts can be written. Enable and disable mutate only the receipt's `enabled` field; uninstall removes one exact package and its stale operation records so recovery does not replay a removed package. Uninstall is idempotent for an absent package and reports `removed: false`.
+
+Startup recovery creates the private roots, removes abandoned staging directories and `.admitting-*` package directories, validates complete receipts and immutable content, removes stale running operation records and dead target locks, and keeps only completed operation records whose package receipts still verify. Completed uninstall records are replayable without a package receipt. Recovery never promotes partial package data. Corrupt durable packages or completed operation records fail as typed corruption so the Host can stop exposing unsafe state instead of guessing. Successful lifecycle results return safe receipt projections that omit the source server and managed content path; callers that need local package paths read verified store receipts inside the Host.
 
 ## Model Experience
 
@@ -83,6 +85,6 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- **Install only** — this package does not expose Web controls, register a callable skill provider, update, disable, enable, or uninstall releases.
+- **Host library only** — this package does not expose Web controls, register a callable skill provider, or translate lifecycle operations onto RPC.
 - **Permission-based immutability** — committed files use read-only filesystem modes; Windows and filesystems that ignore POSIX mode bits provide weaker protection, and the owning operating-system account can deliberately restore write permission.
 - **Atomic but not crash-durable** — publication uses a same-filesystem rename without `fsync`; a sudden system failure may require later reconciliation by the installation lifecycle owner.

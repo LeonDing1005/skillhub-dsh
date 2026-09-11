@@ -13,7 +13,9 @@ import {
   type ExpectedSkillFile,
   type ManagedSkillAdmissionErrorCode,
   type ManagedSkillInstallRequest,
+  type ManagedSkillLifecycleRequest,
   type ManagedSkillRelease,
+  type ManagedSkillUpdateRequest,
 } from '../src/index.ts'
 
 interface ZipEntryInput {
@@ -136,6 +138,33 @@ function installRequest(overrides: Partial<ManagedSkillInstallRequest> = {}): Ma
     },
     version: '1.0.0',
     idempotencyKey: 'install-weather-1',
+    ...overrides,
+  }
+}
+
+function lifecycleRequest(overrides: Partial<ManagedSkillLifecycleRequest> = {}): ManagedSkillLifecycleRequest {
+  return {
+    identity: {
+      registryInstanceId: registryInstanceId('primary'),
+      namespace: 'global',
+      slug: 'weather',
+    },
+    version: '1.0.0',
+    idempotencyKey: 'mutate-weather-1',
+    ...overrides,
+  }
+}
+
+function updateRequest(overrides: Partial<ManagedSkillUpdateRequest> = {}): ManagedSkillUpdateRequest {
+  return {
+    identity: {
+      registryInstanceId: registryInstanceId('primary'),
+      namespace: 'global',
+      slug: 'weather',
+    },
+    fromVersion: '1.0.0',
+    toVersion: '2.0.0',
+    idempotencyKey: 'update-weather-2',
     ...overrides,
   }
 }
@@ -630,7 +659,7 @@ describe('ManagedSkillStore', () => {
   it('rejects malformed durable receipt fields and manifests', async () => {
     const mutations: Array<(receipt: Record<string, unknown>) => void> = [
       (receipt) => { receipt.formatVersion = 2 },
-      (receipt) => { receipt.enabled = false },
+      (receipt) => { receipt.enabled = 'yes' },
       (receipt) => { receipt.adapter = '' },
       (receipt) => { receipt.adapter = 1 },
       (receipt) => { receipt.sourceServer = 'not a URL' },
@@ -930,6 +959,58 @@ describe('ManagedInstallationService', () => {
       code: 'OPERATION_RECORD_CORRUPT',
       message: expect.not.stringContaining(root),
     })
+  })
+
+  it('disables and enables an installed package with idempotent replay', async () => {
+    const root = await tempRoot('managed-install-enable-disable')
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    const installing = service(root, [input]).service
+    await installing.install(installRequest())
+
+    const disabled = await installing.disable(lifecycleRequest({ idempotencyKey: 'disable-weather' }))
+
+    expect(disabled.operation).toBe('disable')
+    expect(disabled.receipt.enabled).toBe(false)
+    const restarted = service(root, []).service
+    await expect(restarted.disable(lifecycleRequest({ idempotencyKey: 'disable-weather' }))).resolves.toEqual(disabled)
+    expect((await restarted.recover())[0]?.enabled).toBe(false)
+
+    const enabled = await restarted.enable(lifecycleRequest({ idempotencyKey: 'enable-weather' }))
+
+    expect(enabled.operation).toBe('enable')
+    expect(enabled.receipt.enabled).toBe(true)
+    expect((await service(root, []).service.recover())[0]?.enabled).toBe(true)
+  })
+
+  it('uninstalls an installed package and replays the removal after restart', async () => {
+    const root = await tempRoot('managed-install-uninstall')
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    await service(root, [input]).service.install(installRequest())
+
+    const removed = await service(root, []).service.uninstall(lifecycleRequest({ idempotencyKey: 'uninstall-weather' }))
+
+    expect(removed).toMatchObject({ operation: 'uninstall', version: '1.0.0', removed: true })
+    expect(await readdir(join(root, 'v1', 'packages'))).toEqual([])
+    await expect(service(root, []).service.uninstall(lifecycleRequest({ idempotencyKey: 'uninstall-weather' }))).resolves.toEqual(removed)
+  })
+
+  it('updates to an exact version, disables the previous version, and replays after restart', async () => {
+    const root = await tempRoot('managed-install-update')
+    const first = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    const second = await release([{ path: 'SKILL.md', content: skillDocument() }], { version: '2.0.0' })
+    await expectAdmissionError(service(root, [second]).service.update(updateRequest()), 'INVALID_REQUEST')
+    await service(root, [first, second]).service.install(installRequest())
+
+    const updated = await service(root, [second]).service.update(updateRequest())
+
+    expect(updated.operation).toBe('update')
+    expect(updated.receipt.version).toBe('2.0.0')
+    expect(updated.receipt.enabled).toBe(true)
+    expect(updated.previousReceipt.version).toBe('1.0.0')
+    expect(updated.previousReceipt.enabled).toBe(false)
+    const receipts = [...await service(root, []).service.recover()].sort((left, right) => left.version.localeCompare(right.version))
+    expect(receipts.map(receipt => [receipt.version, receipt.enabled])).toEqual([['1.0.0', false], ['2.0.0', true]])
+    await expect(service(root, []).service.update(updateRequest())).resolves.toEqual(updated)
   })
 
   it('cleans incomplete package and operation state during startup recovery', async () => {

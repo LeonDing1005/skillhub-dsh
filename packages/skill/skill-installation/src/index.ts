@@ -23,12 +23,18 @@ import type {
   ExpectedSkillFile,
   ManagedSkillAdmissionLimits,
   ManagedInstallationServiceOptions,
+  ManagedSkillEnablementResult,
   ManagedSkillInstallReceipt,
   ManagedSkillInstallRequest,
   ManagedSkillInstallResult,
+  ManagedSkillLifecycleRequest,
+  ManagedSkillLifecycleResult,
   ManagedSkillReceipt,
   ManagedSkillRelease,
   ManagedSkillReleaseResolver,
+  ManagedSkillUninstallResult,
+  ManagedSkillUpdateRequest,
+  ManagedSkillUpdateResult,
   ManagedSkillStoreOptions,
   RegistryInstanceId,
   VerifiedSkillFile,
@@ -42,12 +48,18 @@ export type {
   ManagedSkillAdmissionErrorCode,
   ManagedSkillAdmissionLimits,
   ManagedInstallationServiceOptions,
+  ManagedSkillEnablementResult,
   ManagedSkillInstallReceipt,
   ManagedSkillInstallRequest,
   ManagedSkillInstallResult,
+  ManagedSkillLifecycleRequest,
+  ManagedSkillLifecycleResult,
   ManagedSkillReceipt,
   ManagedSkillRelease,
   ManagedSkillReleaseResolver,
+  ManagedSkillUninstallResult,
+  ManagedSkillUpdateRequest,
+  ManagedSkillUpdateResult,
   ManagedSkillStoreOptions,
   RegistryInstanceId,
   VerifiedSkillFile,
@@ -77,9 +89,15 @@ interface InstallTarget {
   readonly version: string
 }
 
+interface UpdateTarget {
+  readonly identity: CommunitySkillIdentity
+  readonly fromVersion: string
+  readonly toVersion: string
+}
+
 interface RunningInstallOperation {
   readonly formatVersion: 1
-  readonly operation: 'install'
+  readonly operation: ManagedSkillLifecycleResult['operation']
   readonly status: 'running'
   readonly targetKey: string
   readonly ownerPid: number
@@ -88,10 +106,11 @@ interface RunningInstallOperation {
 
 interface CompletedInstallOperation {
   readonly formatVersion: 1
-  readonly operation: 'install'
+  readonly operation: ManagedSkillLifecycleResult['operation']
   readonly status: 'completed'
   readonly targetKey: string
   readonly completedAt: string
+  readonly result: ManagedSkillLifecycleResult
 }
 
 type InstallOperationRecord = RunningInstallOperation | CompletedInstallOperation
@@ -105,7 +124,8 @@ interface TargetInstallLock {
 
 interface ActiveInstallOperation {
   readonly targetKey: string
-  readonly result: Promise<ManagedSkillInstallResult>
+  readonly operation: ManagedSkillLifecycleResult['operation']
+  readonly result: Promise<ManagedSkillLifecycleResult>
 }
 
 /** Host-internal store that admits immutable managed package versions. */
@@ -332,7 +352,7 @@ export class ManagedInstallationService {
         if (!isProcessAlive(record.ownerPid)) await rm(path, { force: true })
         continue
       }
-      await receiptForCompletedOperation(this.store.root, record)
+      if (record.operation !== 'uninstall') await receiptForCompletedOperation(this.store.root, record)
     }
     return receipts
   }
@@ -349,11 +369,12 @@ export class ManagedInstallationService {
     const targetKey = packageKey(target)
     const active = this.activeOperations.get(operationKey)
     if (active !== undefined) {
+      assertSameOperation(active.operation, 'install')
       assertSameOperationTarget(active.targetKey, targetKey)
-      return await active.result
+      return await active.result as ManagedSkillInstallResult
     }
     const operation = this.performInstall(target, targetKey, request.idempotencyKey, signal)
-    this.activeOperations.set(operationKey, { targetKey, result: operation })
+    this.activeOperations.set(operationKey, { operation: 'install', targetKey, result: operation })
     try {
       return await operation
     } finally {
@@ -371,8 +392,9 @@ export class ManagedInstallationService {
     signal?.throwIfAborted()
     const operationPath = this.operationPath(idempotencyKey)
     const existing = await readInstallOperationIfPresent(operationPath)
+    if (existing !== undefined) assertSameOperation(existing.operation, 'install')
     if (existing !== undefined) assertSameOperationTarget(existing.targetKey, targetKey)
-    if (existing?.status === 'completed') return await replayCompletedInstall(this.store.root, existing)
+    if (existing?.status === 'completed') return existing.result as ManagedSkillInstallResult
     if (existing?.status === 'running') fail('Managed installation operation is already in progress.', 'OPERATION_IN_PROGRESS')
     if (this.activeTargets.has(targetKey)) fail('Managed installation operation is already in progress.', 'OPERATION_IN_PROGRESS')
     this.activeTargets.add(targetKey)
@@ -391,14 +413,16 @@ export class ManagedInstallationService {
       const release = await resolveInstallRelease(this.resolver, target, signal)
       assertResolvedReleaseMatches(target, release)
       committed = await this.store.admit(release, signal)
+      const result: ManagedSkillInstallResult = { operation: 'install', receipt: projectInstallReceipt(committed) }
       await writeInstallOperation(operationPath, {
         formatVersion: 1,
         operation: 'install',
         status: 'completed',
         targetKey,
         completedAt: this.now().toISOString(),
+        result,
       })
-      return { operation: 'install', receipt: projectInstallReceipt(committed) }
+      return result
     } catch (error) {
       if (committed !== undefined) {
         fail('Managed installation completed, but its idempotency record could not be persisted.', 'OPERATION_RECORD_CORRUPT')
@@ -415,8 +439,165 @@ export class ManagedInstallationService {
     throw new Error('managed installation invariant failed')
   }
 
+  /**
+   * Enable one exact installed managed package.
+   * @param request - exact identity, version, and caller-minted idempotency key.
+   * @returns enablement result with a safe receipt projection.
+   */
+  async enable(request: ManagedSkillLifecycleRequest): Promise<ManagedSkillEnablementResult> {
+    return await this.performReceiptMutation('enable', normalizeLifecycleRequest(request), request.idempotencyKey, true)
+  }
+
+  /**
+   * Disable one exact installed managed package without deleting content.
+   * @param request - exact identity, version, and caller-minted idempotency key.
+   * @returns enablement result with a safe receipt projection.
+   */
+  async disable(request: ManagedSkillLifecycleRequest): Promise<ManagedSkillEnablementResult> {
+    return await this.performReceiptMutation('disable', normalizeLifecycleRequest(request), request.idempotencyKey, false)
+  }
+
+  /**
+   * Remove one exact managed package and stale operation records for that target.
+   * @param request - exact identity, version, and caller-minted idempotency key.
+   * @returns uninstall result indicating whether a package was present.
+   */
+  async uninstall(request: ManagedSkillLifecycleRequest): Promise<ManagedSkillUninstallResult> {
+    const target = normalizeLifecycleRequest(request)
+    const targetKey = packageKey(target)
+    return await this.performLifecycleOperation('uninstall', targetKey, request.idempotencyKey, async () => {
+      const receipt = await readReceiptIfPresent(this.packagePath(targetKey))
+      if (receipt !== undefined) await removeManagedPackage(this.packagePath(targetKey))
+      await removeOperationRecordsForTarget(this.operationRoot, targetKey, operationKeyFor(request.idempotencyKey))
+      return {
+        operation: 'uninstall',
+        identity: target.identity,
+        version: target.version,
+        removed: receipt !== undefined,
+      }
+    }) as ManagedSkillUninstallResult
+  }
+
+  /**
+   * Admit and enable one target version while disabling the installed previous version.
+   * @param request - exact identity, previous version, target version, and caller-minted idempotency key.
+   * @param signal - optional cancellation before the durable commit point.
+   * @returns update result with the target receipt and disabled previous receipt.
+   */
+  async update(request: ManagedSkillUpdateRequest, signal?: AbortSignal): Promise<ManagedSkillUpdateResult> {
+    const target = normalizeUpdateRequest(request)
+    const targetKey = packageKey({ identity: target.identity, version: target.toVersion })
+    return await this.performLifecycleOperation('update', targetKey, request.idempotencyKey, async () => {
+      const fromPath = this.packagePath(packageKey({ identity: target.identity, version: target.fromVersion }))
+      const previous = await readReceiptIfPresent(fromPath)
+      if (previous === undefined) fail('Managed update source version is not installed.', 'INVALID_REQUEST')
+      const release = await resolveInstallRelease(this.resolver, { identity: target.identity, version: target.toVersion }, signal)
+      assertResolvedReleaseMatches({ identity: target.identity, version: target.toVersion }, release)
+      await this.store.admit(release, signal)
+      const targetPath = this.packagePath(targetKey)
+      await writeReceiptState(targetPath, false)
+      try {
+        await writeReceiptState(fromPath, false)
+        const enabled = await writeReceiptState(targetPath, true)
+        return {
+          operation: 'update',
+          receipt: projectInstallReceipt(enabled),
+          previousReceipt: projectInstallReceipt({ ...previous, enabled: false }),
+        }
+      } catch (error) {
+        await writeReceiptState(fromPath, previous.enabled).catch(() => {})
+        await writeReceiptState(targetPath, false).catch(() => {})
+        throw error
+      }
+    }) as ManagedSkillUpdateResult
+  }
+
+  private async performReceiptMutation(
+    operation: 'enable' | 'disable',
+    target: InstallTarget,
+    idempotencyKey: string,
+    enabled: boolean,
+  ): Promise<ManagedSkillEnablementResult> {
+    const targetKey = packageKey(target)
+    return await this.performLifecycleOperation(operation, targetKey, idempotencyKey, async () => {
+      const receipt = await writeReceiptState(this.packagePath(targetKey), enabled)
+      return { operation, receipt: projectInstallReceipt(receipt) }
+    }) as ManagedSkillEnablementResult
+  }
+
+  private async performLifecycleOperation(
+    operation: ManagedSkillLifecycleResult['operation'],
+    targetKey: string,
+    idempotencyKey: string,
+    mutate: () => Promise<ManagedSkillLifecycleResult>,
+  ): Promise<ManagedSkillLifecycleResult> {
+    await this.ensureReady()
+    const operationKey = operationKeyFor(idempotencyKey)
+    const active = this.activeOperations.get(operationKey)
+    if (active !== undefined) {
+      assertSameOperation(active.operation, operation)
+      assertSameOperationTarget(active.targetKey, targetKey)
+      return await active.result
+    }
+    const running = this.performLifecycleOperationLocked(operation, targetKey, idempotencyKey, mutate)
+    this.activeOperations.set(operationKey, { operation, targetKey, result: running })
+    try {
+      return await running
+    } finally {
+      this.activeOperations.delete(operationKey)
+    }
+  }
+
+  private async performLifecycleOperationLocked(
+    operation: ManagedSkillLifecycleResult['operation'],
+    targetKey: string,
+    idempotencyKey: string,
+    mutate: () => Promise<ManagedSkillLifecycleResult>,
+  ): Promise<ManagedSkillLifecycleResult> {
+    const operationPath = this.operationPath(idempotencyKey)
+    const existing = await readInstallOperationIfPresent(operationPath)
+    if (existing !== undefined) assertSameOperation(existing.operation, operation)
+    if (existing !== undefined) assertSameOperationTarget(existing.targetKey, targetKey)
+    if (existing?.status === 'completed') return existing.result
+    if (existing?.status === 'running') fail('Managed installation operation is already in progress.', 'OPERATION_IN_PROGRESS')
+    let targetLock: (() => Promise<void>) | undefined
+    try {
+      targetLock = await acquireTargetInstallLock(this.targetOperationRoot, targetKey, this.now)
+      await writeInstallOperation(operationPath, {
+        formatVersion: 1,
+        operation,
+        status: 'running',
+        targetKey,
+        ownerPid: process.pid,
+        startedAt: this.now().toISOString(),
+      })
+      const result = await mutate()
+      await writeInstallOperation(operationPath, {
+        formatVersion: 1,
+        operation,
+        status: 'completed',
+        targetKey,
+        completedAt: this.now().toISOString(),
+        result,
+      })
+      return result
+    } catch (error) {
+      await rm(operationPath, { force: true }).catch(() => {})
+      if (error instanceof ManagedSkillAdmissionError) throw error
+      fail('Managed lifecycle operation failed before durable completion.', 'COMMIT_FAILED', error)
+    } finally {
+      if (targetLock !== undefined) await targetLock().catch(() => {})
+    }
+    /* v8 ignore next -- the try/catch above always returns or throws. */
+    throw new Error('managed lifecycle invariant failed')
+  }
+
   private operationPath(idempotencyKey: string): string {
     return join(this.operationRoot, `${operationKeyFor(idempotencyKey)}.json`)
+  }
+
+  private packagePath(targetKey: string): string {
+    return join(this.store.root, 'packages', targetKey)
   }
 
   private async ensureReady(): Promise<void> {
@@ -499,6 +680,38 @@ function normalizeInstallRequest(request: ManagedSkillInstallRequest): InstallTa
   }
 }
 
+function normalizeLifecycleRequest(request: ManagedSkillLifecycleRequest): InstallTarget {
+  for (const [field, value] of [
+    ['registryInstanceId', request.identity.registryInstanceId],
+    ['namespace', request.identity.namespace],
+    ['slug', request.identity.slug],
+    ['version', request.version],
+    ['idempotencyKey', request.idempotencyKey],
+  ] as const) {
+    if (value === '' || value.trim() !== value || value.includes('\0')) {
+      fail(`Managed lifecycle ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
+    }
+  }
+  return { identity: { ...request.identity }, version: request.version }
+}
+
+function normalizeUpdateRequest(request: ManagedSkillUpdateRequest): UpdateTarget {
+  for (const [field, value] of [
+    ['registryInstanceId', request.identity.registryInstanceId],
+    ['namespace', request.identity.namespace],
+    ['slug', request.identity.slug],
+    ['fromVersion', request.fromVersion],
+    ['toVersion', request.toVersion],
+    ['idempotencyKey', request.idempotencyKey],
+  ] as const) {
+    if (value === '' || value.trim() !== value || value.includes('\0')) {
+      fail(`Managed update ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
+    }
+  }
+  if (request.fromVersion === request.toVersion) fail('Managed update requires different source and target versions.', 'INVALID_REQUEST')
+  return { identity: { ...request.identity }, fromVersion: request.fromVersion, toVersion: request.toVersion }
+}
+
 function assertResolvedReleaseMatches(target: InstallTarget, release: ManagedSkillRelease): void {
   if (release.identity.registryInstanceId !== target.identity.registryInstanceId
     || release.identity.namespace !== target.identity.namespace
@@ -523,7 +736,13 @@ async function resolveInstallRelease(
 
 function assertSameOperationTarget(recordedTargetKey: string, targetKey: string): void {
   if (recordedTargetKey !== targetKey) {
-    fail('Managed installation idempotency key is already bound to another install target.', 'IDEMPOTENCY_KEY_CONFLICT')
+    fail('Managed installation idempotency key is already bound to another lifecycle target.', 'IDEMPOTENCY_KEY_CONFLICT')
+  }
+}
+
+function assertSameOperation(recorded: ManagedSkillLifecycleResult['operation'], requested: ManagedSkillLifecycleResult['operation']): void {
+  if (recorded !== requested) {
+    fail('Managed installation idempotency key is already bound to another operation.', 'IDEMPOTENCY_KEY_CONFLICT')
   }
 }
 
@@ -591,6 +810,17 @@ async function cleanupDirectory(path: string): Promise<void> {
 
 async function writeInstallOperation(path: string, record: InstallOperationRecord): Promise<void> {
   await writeFileAtomic(path, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600, dirMode: 0o700 })
+}
+
+async function removeOperationRecordsForTarget(root: string, targetKey: string, exceptOperationKey: string): Promise<void> {
+  const entries = await readdir(root, { withFileTypes: true, encoding: 'utf8' })
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+    if (entry.name === `${exceptOperationKey}.json`) continue
+    const path = join(root, entry.name)
+    const record = await readInstallOperation(path)
+    if (record.targetKey === targetKey) await rm(path, { force: true })
+  }
 }
 
 async function acquireTargetInstallLock(
@@ -664,7 +894,7 @@ async function readInstallOperation(path: string): Promise<InstallOperationRecor
 }
 
 function validateInstallOperation(value: unknown): InstallOperationRecord {
-  if (!isRecord(value) || value.formatVersion !== 1 || value.operation !== 'install'
+  if (!isRecord(value) || value.formatVersion !== 1 || !isLifecycleOperation(value.operation)
     || typeof value.status !== 'string' || typeof value.targetKey !== 'string' || !SHA256_PATTERN.test(value.targetKey)) {
     fail('Managed installation operation record has an unsupported format.', 'OPERATION_RECORD_CORRUPT')
   }
@@ -675,7 +905,7 @@ function validateInstallOperation(value: unknown): InstallOperationRecord {
     }
     return {
       formatVersion: 1,
-      operation: 'install',
+      operation: value.operation,
       status: 'running',
       targetKey: value.targetKey,
       ownerPid: value.ownerPid,
@@ -683,26 +913,51 @@ function validateInstallOperation(value: unknown): InstallOperationRecord {
     }
   }
   if (value.status === 'completed') {
-    if (!isCanonicalIsoTime(value.completedAt)) {
+    if (!isCanonicalIsoTime(value.completedAt) || !isLifecycleResult(value.result, value.operation)) {
       fail('Managed installation operation record has an invalid completion time.', 'OPERATION_RECORD_CORRUPT')
     }
     return {
       formatVersion: 1,
-      operation: 'install',
+      operation: value.operation,
       status: 'completed',
       targetKey: value.targetKey,
       completedAt: value.completedAt,
+      result: value.result,
     }
   }
   fail('Managed installation operation record has an unsupported status.', 'OPERATION_RECORD_CORRUPT')
 }
 
-async function replayCompletedInstall(root: string, record: CompletedInstallOperation): Promise<ManagedSkillInstallResult> {
-  return { operation: 'install', receipt: projectInstallReceipt(await receiptForCompletedOperation(root, record)) }
-}
-
 async function receiptForCompletedOperation(root: string, record: CompletedInstallOperation): Promise<ManagedSkillReceipt> {
   return await readReceipt(join(root, 'packages', record.targetKey))
+}
+
+function isLifecycleOperation(value: unknown): value is ManagedSkillLifecycleResult['operation'] {
+  return value === 'install' || value === 'update' || value === 'enable' || value === 'disable' || value === 'uninstall'
+}
+
+function isLifecycleResult(value: unknown, operation: ManagedSkillLifecycleResult['operation']): value is ManagedSkillLifecycleResult {
+  if (!isRecord(value) || value.operation !== operation) return false
+  if (operation === 'uninstall') {
+    return isRecord(value.identity) && isNonEmptyTrimmed(value.identity.registryInstanceId)
+      && isNonEmptyTrimmed(value.identity.namespace) && isNonEmptyTrimmed(value.identity.slug)
+      && isNonEmptyTrimmed(value.version) && typeof value.removed === 'boolean'
+  }
+  if (operation === 'update') {
+    return isInstallReceiptProjection(value.receipt)
+      && isInstallReceiptProjection(value.previousReceipt)
+  }
+  return isInstallReceiptProjection(value.receipt)
+}
+
+function isInstallReceiptProjection(value: unknown): value is ManagedSkillInstallReceipt {
+  return isRecord(value) && value.formatVersion === 1 && typeof value.enabled === 'boolean'
+    && isNonEmptyTrimmed(value.adapter) && isNonEmptyTrimmed(value.canonicalName) && isNonEmptyTrimmed(value.version)
+    && typeof value.fingerprint === 'string' && FINGERPRINT_PATTERN.test(value.fingerprint)
+    && isCanonicalIsoTime(value.installedAt)
+    && isRecord(value.identity) && isNonEmptyTrimmed(value.identity.registryInstanceId)
+    && isNonEmptyTrimmed(value.identity.namespace) && isNonEmptyTrimmed(value.identity.slug)
+    && Array.isArray(value.manifest)
 }
 
 function projectInstallReceipt(receipt: ManagedSkillReceipt): ManagedSkillInstallReceipt {
@@ -717,6 +972,24 @@ function projectInstallReceipt(receipt: ManagedSkillReceipt): ManagedSkillInstal
     installedAt: receipt.installedAt,
     enabled: receipt.enabled,
   }
+}
+
+async function writeReceiptState(packagePath: string, enabled: boolean): Promise<ManagedSkillReceipt> {
+  const current = await readReceipt(packagePath)
+  if (current.enabled === enabled) return current
+  const receipt: ManagedSkillReceipt = { ...current, enabled }
+  try {
+    await chmod(packagePath, 0o700)
+    await writeFileAtomic(join(packagePath, RECEIPT_FILE), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o444, dirMode: 0o700 })
+    await chmod(join(packagePath, RECEIPT_FILE), 0o444)
+  } finally {
+    await chmod(packagePath, 0o555).catch(() => {})
+  }
+  return await readReceipt(packagePath)
+}
+
+async function removeManagedPackage(packagePath: string): Promise<void> {
+  await removeStaging(packagePath)
 }
 
 async function readReceiptIfPresent(packagePath: string): Promise<ManagedSkillReceipt | undefined> {
@@ -835,7 +1108,7 @@ async function assertDurableEntry(path: string, kind: 'directory' | 'file'): Pro
 }
 
 function validateReceipt(value: unknown, packagePath: string): ManagedSkillReceipt {
-  if (!isRecord(value) || value.formatVersion !== 1 || value.enabled !== true
+  if (!isRecord(value) || value.formatVersion !== 1 || typeof value.enabled !== 'boolean'
     || !isNonEmptyTrimmed(value.adapter) || !isCanonicalSourceServer(value.sourceServer)
     || !isNonEmptyTrimmed(value.canonicalName) || !isNonEmptyTrimmed(value.version)
     || typeof value.fingerprint !== 'string' || !FINGERPRINT_PATTERN.test(value.fingerprint)
@@ -875,7 +1148,7 @@ function validateReceipt(value: unknown, packagePath: string): ManagedSkillRecei
     manifest,
     fingerprint: value.fingerprint,
     installedAt: value.installedAt,
-    enabled: true,
+    enabled: value.enabled,
     managedLocation: value.managedLocation,
   } satisfies ManagedSkillReceipt
   if (basename(packagePath) !== packageKey(receipt)) {
