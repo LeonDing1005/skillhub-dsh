@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Host-only admission, lifecycle operations, and immutable storage for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records lifecycle operation results for idempotent Host retry. It registers no Cordis service and does not contribute installed content to `ctx.skills`.
+Host-side admission, lifecycle operations, immutable storage, and the managed `ctx.skills` provider for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records lifecycle operation results for idempotent Host retry. `ManagedSkillProvider` contributes only enabled, verified packages and keeps storage paths and source-server metadata internal.
 
 ## API
 
@@ -77,7 +77,7 @@ Startup recovery creates the private roots, removes abandoned staging directorie
 
 ## Model Experience
 
-None, as this Host-only package admission module registers no provider, tool, prompt, or session event.
+Enabled managed packages appear in the existing `ctx.skills` catalog and are loaded through the same skill tool and invocation paths as other providers. Disabled or uninstalled packages are absent; project and scoped runtime precedence remains owned by `dsh-skill`.
 
 #### KV Cache effect
 
@@ -85,6 +85,6 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- **Host library only** — this package does not expose Web controls, register a callable skill provider, or translate lifecycle operations onto RPC.
+- **Host library only** — this package does not expose Web controls or translate lifecycle operations onto RPC. Host composition registers `ManagedSkillProvider` with `apply(ctx, service)`.
 - **Permission-based immutability** — committed files use read-only filesystem modes; Windows and filesystems that ignore POSIX mode bits provide weaker protection, and the owning operating-system account can deliberately restore write permission.
 - **Atomic but not crash-durable** — publication uses a same-filesystem rename without `fsync`; a sudden system failure may require later reconciliation by the installation lifecycle owner.

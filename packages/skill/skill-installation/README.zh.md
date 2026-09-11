@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向 Host 的 Community Skill 版本准入、生命周期操作与不可变存储。此包依据 Registry Instance 元数据验证下载的 ZIP 字节，在唯一的私有 staging 目录下写入已验证内容和 receipt，通过同一文件系统内的目录重命名同时发布两者，并记录生命周期操作结果以支持 Host 幂等重试。它不注册 Cordis 服务，也不会向 `ctx.skills` 贡献已安装内容。
+面向 Host 的 Community Skill 版本准入、生命周期操作、不可变存储和 managed `ctx.skills` provider。此包依据 Registry Instance 元数据验证下载的 ZIP 字节，在唯一的私有 staging 目录下写入已验证内容和 receipt，通过同一文件系统内的目录重命名同时发布两者，并记录生命周期操作结果以支持 Host 幂等重试。`ManagedSkillProvider` 只贡献已启用且已验证的包，存储路径和源服务器元数据始终留在内部。
 
 ## API
 
@@ -77,7 +77,7 @@ receipt 记录 Registry Instance 与远程身份、adapter 与源服务器、规
 
 ## 模型体验
 
-无，因为这个仅限 Host 的包准入模块不注册 provider、工具、提示词或会话事件。
+已启用的 managed 包会出现在现有 `ctx.skills` catalog 中，并通过与其他 provider 相同的 skill 工具和显式调用路径加载。禁用或卸载的包不会出现；项目和 scoped runtime 的优先级仍由 `dsh-skill` 负责。
 
 #### KV Cache 影响
 
@@ -85,6 +85,6 @@ receipt 记录 Registry Instance 与远程身份、adapter 与源服务器、规
 
 ## 已知限制与推迟的工作
 
-- **仅 Host 库** — 此包不会暴露 Web 控件、注册 callable skill provider，或把生命周期操作转换到 RPC。
+- **仅 Host 库** — 此包不会暴露 Web 控件，也不会把生命周期操作转换到 RPC。Host 组合通过 `apply(ctx, service)` 注册 `ManagedSkillProvider`。
 - **基于权限的不可变性** — 已提交文件使用只读文件系统 mode；Windows 和忽略 POSIX mode bit 的文件系统提供的保护较弱，拥有操作系统账户仍可主动恢复写权限。
 - **原子但并非崩溃持久** — 发布使用同一文件系统内的重命名而不调用 `fsync`；系统突然故障后可能需要由安装生命周期所有者执行协调。

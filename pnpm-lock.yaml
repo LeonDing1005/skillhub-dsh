@@ -6869,6 +6869,9 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:^
+        version: link:../skill
       '@deepseek-ai/dsh-skill-filesystem':
         specifier: workspace:^
         version: link:../skill-filesystem

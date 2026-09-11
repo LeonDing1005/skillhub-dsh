@@ -2,8 +2,8 @@
  * Host-only managed Community Skill package admission and immutable storage.
  *
  * The package validates downloaded ZIPs in a private staging tree and publishes
- * `content/` plus `receipt.json` through one directory rename. It neither
- * registers a Cordis service nor contributes a callable skill.
+ * `content/` plus `receipt.json` through one directory rename. Its optional
+ * provider exposes only enabled committed packages to `ctx.skills`.
  *
  * @module @deepseek-ai/dsh-skill-installation
  */
@@ -14,6 +14,8 @@ import { chmod, lstat, mkdir, open, readFile, readdir, rename, rm, unlink, write
 import { basename, join, posix, resolve } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { parseSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
+import type { Context } from '@deepseek-ai/cordis'
+import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProvider, SkillProviderControl } from '@deepseek-ai/dsh-skill'
 import { extractSkillArchive } from './archive.ts'
 import { fail, ManagedSkillAdmissionError } from './error.ts'
 import { computeSkillHubFingerprint } from './fingerprint.ts'
@@ -64,6 +66,9 @@ export type {
   RegistryInstanceId,
   VerifiedSkillFile,
 } from './types.ts'
+
+export const MANAGED_SKILL_PROVIDER_NAME = 'managed'
+const MANAGED_SKILL_RANK = 550
 
 const RECEIPT_FILE = 'receipt.json'
 const CONTENT_DIRECTORY = 'content'
@@ -319,6 +324,7 @@ export class ManagedInstallationService {
   private readonly now: () => Date
   private readonly activeTargets = new Set<string>()
   private readonly activeOperations = new Map<string, ActiveInstallOperation>()
+  private readonly changeListeners = new Set<() => void>()
   private ready: Promise<void> | undefined
 
   /**
@@ -331,6 +337,18 @@ export class ManagedInstallationService {
     this.operationRoot = join(this.store.root, OPERATION_DIRECTORY)
     this.targetOperationRoot = join(this.operationRoot, TARGET_OPERATION_DIRECTORY)
     this.now = options.now ?? (() => new Date())
+  }
+
+  /** Subscribe to durable installation changes so a managed provider can invalidate its catalog. */
+  onChange(listener: () => void): () => void {
+    this.changeListeners.add(listener)
+    return () => { this.changeListeners.delete(listener) }
+  }
+
+  /** Read verified receipts for provider discovery. */
+  async listReceipts(): Promise<readonly ManagedSkillReceipt[]> {
+    await this.ensureReady()
+    return await this.store.listReceipts()
   }
 
   /**
@@ -422,6 +440,7 @@ export class ManagedInstallationService {
         completedAt: this.now().toISOString(),
         result,
       })
+      this.notifyChange()
       return result
     } catch (error) {
       if (committed !== undefined) {
@@ -580,6 +599,7 @@ export class ManagedInstallationService {
         completedAt: this.now().toISOString(),
         result,
       })
+      this.notifyChange()
       return result
     } catch (error) {
       await rm(operationPath, { force: true }).catch(() => {})
@@ -604,6 +624,71 @@ export class ManagedInstallationService {
     this.ready ??= this.recover().then(() => {})
     await this.ready
   }
+
+  private notifyChange(): void {
+    for (const listener of this.changeListeners) {
+      try { listener() } catch { /* invalidation is advisory after durable commit */ }
+    }
+  }
+}
+
+interface ManagedSkillLocator {
+  readonly receipt: ManagedSkillReceipt
+}
+
+/** Provider exposing enabled, verified managed packages through `ctx.skills`. */
+export class ManagedSkillProvider implements SkillProvider {
+  readonly name = MANAGED_SKILL_PROVIDER_NAME
+
+  constructor(
+    private readonly service: ManagedInstallationService,
+    control?: SkillProviderControl,
+  ) {
+    if (control !== undefined) {
+      const unsubscribe = service.onChange(control.invalidate)
+      control.signal.addEventListener('abort', unsubscribe, { once: true })
+    }
+  }
+
+  async list(_options: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
+    const receipts = await this.service.listReceipts()
+    return receipts.filter(receipt => receipt.enabled).map(receipt => ({
+      name: receipt.canonicalName,
+      description: `Managed Community Skill ${receipt.canonicalName}`,
+      invocation: { modelInvocable: true, userInvocable: true },
+      source: 'custom',
+      provider: this.name,
+      rank: MANAGED_SKILL_RANK,
+      locator: { receipt },
+    }))
+  }
+
+  async get(candidate: SkillCandidate, _options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
+    const locator = candidate.locator as ManagedSkillLocator
+    const raw = await readFile(join(locator.receipt.managedLocation, 'SKILL.md'), 'utf8').catch((error) => {
+      if (isCode(error, 'ENOENT')) return undefined
+      throw error
+    })
+    if (raw === undefined) return undefined
+    const parsed = parseSkillDocument(raw)
+    if (parsed.name !== candidate.name) return undefined
+    return {
+      name: parsed.name,
+      description: parsed.description,
+      ...parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {},
+      invocation: parsed.invocation,
+      source: 'custom',
+      provider: this.name,
+      resourceBase: { kind: 'opaque', description: 'Resources are managed by the local Skill Center.' },
+      ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
+      content: parsed.content,
+    }
+  }
+}
+
+/** Register a managed installation provider on an existing skill registry. */
+export function apply(ctx: Context, service: ManagedInstallationService): () => void {
+  return ctx.skills.registerProvider(control => new ManagedSkillProvider(service, control))
 }
 
 function normalizeRelease(release: ManagedSkillRelease): NormalizedRelease {
