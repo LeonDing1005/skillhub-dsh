@@ -2,12 +2,13 @@
 
 English | [中文](README.zh.md)
 
-Host-only admission and immutable storage for exact Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, and publishes both with a same-filesystem directory rename. It registers no Cordis service and does not contribute installed content to `ctx.skills`.
+Host-only admission, exact install, and immutable storage for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records install operation results for idempotent Host retry. It registers no Cordis service and does not contribute installed content to `ctx.skills`.
 
 ## API
 
 ```ts
 import {
+  ManagedInstallationService,
   ManagedSkillStore,
   registryInstanceId,
   type ManagedSkillRelease,
@@ -27,6 +28,29 @@ const store = new ManagedSkillStore({
 const registry = registryInstanceId('community-primary')
 void registry
 const receipt = await store.admit(release)
+
+const service = new ManagedInstallationService({
+  root: '/var/lib/dsh/managed-skills',
+  limits: {
+    maxCompressedBytes: 8 * 1024 * 1024,
+    maxExpandedBytes: 32 * 1024 * 1024,
+    maxEntryCount: 256,
+  },
+  resolver: {
+    async resolve(request, signal) {
+      void request
+      void signal
+      return release
+    },
+  },
+})
+
+const result = await service.install({
+  identity: release.identity,
+  version: release.version,
+  idempotencyKey: 'host-generated-operation-id',
+})
+void result
 ```
 
 `ManagedSkillRelease` identifies one Registry Instance, namespace, slug, canonical skill name, and exact version. Its manifest contains the expected path, byte size, and lowercase SHA-256 for every file. `computeSkillHubFingerprint()` sorts those verified paths, hashes SkillHub's `path:sha256\n` sequence, and returns the prefixed release fingerprint.
@@ -39,7 +63,15 @@ Every extracted regular file must match the resolved manifest before publication
 
 The receipt records the Registry Instance and remote identity, adapter and source server, canonical name, exact version, verified manifest, recomputed fingerprint, install time, enabled state, and managed content location. Before returning durable state, the store rejects linked or writable entries and verifies that the content file set, directory set, sizes, and hashes still match the receipt. Repeating the same identity and version with identical metadata returns that verified receipt without decoding replacement bytes. Metadata drift for an existing release and canonical-name ownership by another remote identity are typed conflicts. A writer-lock cleanup failure after commit emits a process warning while preserving the truthful successful result; the orphan lock requires operator removal before another admission can proceed.
 
-`ManagedSkillAdmissionError.code` distinguishes invalid requests, archive and limit failures, manifest, fingerprint, skill, and identity failures, immutable-release and canonical-name conflicts, corrupt durable state, and commit failures. Callers may translate these codes for their own Host or wire API; messages contain operator-readable context but no credentials or package content.
+`ManagedSkillAdmissionError.code` distinguishes invalid requests, archive and limit failures, manifest, fingerprint, skill, and identity failures, immutable-release and canonical-name conflicts, release unavailability, in-progress operations, corrupt durable state, and commit failures. Callers may translate these codes for their own Host or wire API; messages contain operator-readable context but no credentials or package content.
+
+## Exact install lifecycle
+
+`ManagedInstallationService` wraps `ManagedSkillStore` for the first Host lifecycle operation: installing one exact Community Skill release after user confirmation. The caller supplies the immutable Registry Instance identity, exact version, and idempotency key; the service asks its `ManagedSkillReleaseResolver` to reacquire that same release and rejects any identity or version drift before archive admission. The resolver owns transport and authentication; this package owns local validation, durable receipt publication, and operation replay.
+
+Install operation records live beside the package store under `v1/operations/`, separately from package receipts. A running record reserves the caller's idempotency key before remote resolution starts, and a per-target owner-pid lock under `v1/operations/targets/` rejects same-target operations from another service instance while the owner is still alive. A completed record stores the package target key after `ManagedSkillStore.admit()` has returned a durable receipt. Reusing the same idempotency key for the same target returns the completed result without calling the resolver after restart; reusing that key for another target is an `IDEMPOTENCY_KEY_CONFLICT`. A different idempotency key for the same target is rejected with `OPERATION_IN_PROGRESS` while another install is live, then may return the already committed receipt once the first operation completes.
+
+Startup recovery creates the private roots, removes abandoned staging directories and `.admitting-*` package directories, validates complete receipts and immutable content, removes stale running operation records and dead target locks, and keeps only completed operation records whose receipts still verify. Recovery never promotes partial package data. Corrupt durable packages or completed operation records fail as typed corruption so the Host can stop exposing unsafe state instead of guessing. Successful install results return a safe receipt projection that omits the source server and managed content path; callers that need local package paths read verified store receipts inside the Host.
 
 ## Model Experience
 
@@ -51,6 +83,6 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- **Admission only** — this package does not download artifacts, expose Web controls, register a callable skill provider, update or uninstall releases, or reconcile abandoned state after process failure.
+- **Install only** — this package does not expose Web controls, register a callable skill provider, update, disable, enable, or uninstall releases.
 - **Permission-based immutability** — committed files use read-only filesystem modes; Windows and filesystems that ignore POSIX mode bits provide weaker protection, and the owning operating-system account can deliberately restore write permission.
 - **Atomic but not crash-durable** — publication uses a same-filesystem rename without `fsync`; a sudden system failure may require later reconciliation by the installation lifecycle owner.

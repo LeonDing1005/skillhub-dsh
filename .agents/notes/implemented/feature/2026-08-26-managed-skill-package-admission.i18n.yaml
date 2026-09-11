@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-26-managed-skill-package-admission.md
-2026-08-26-managed-skill-package-admission.md: 337d47a6135c8f51d398d234a1fb6da6ed6db2d8
-2026-08-26-managed-skill-package-admission.zh.md: 9c12b727992f510a5986b024cea90e86e6b78d06
+2026-08-26-managed-skill-package-admission.md: a741a4d8645b223da7dd740dc5993bde02856641
+2026-08-26-managed-skill-package-admission.zh.md: a2d71e9f9080e97a3283e5174b1ddd6bc283b123

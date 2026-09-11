@@ -43,6 +43,38 @@ export interface ManagedSkillStoreOptions {
   readonly now?: () => Date
 }
 
+/** Exact install request supplied by a Host caller after user confirmation. */
+export interface ManagedSkillInstallRequest {
+  readonly identity: CommunitySkillIdentity
+  readonly version: string
+  readonly idempotencyKey: string
+}
+
+/** Host adapter that reacquires exact Community Skill releases for installation. */
+export interface ManagedSkillReleaseResolver {
+  /**
+   * Resolve one exact Community Skill release and artifact.
+   * @param request - exact remote identity and version requested by the caller.
+   * @param signal - cancellation forwarded from the installation operation.
+   * @returns exact release bytes and metadata for admission.
+   */
+  resolve(request: Pick<ManagedSkillInstallRequest, 'identity' | 'version'>, signal?: AbortSignal): Promise<ManagedSkillRelease>
+}
+
+/** Construction options for the Host-owned Managed Installation service. */
+export interface ManagedInstallationServiceOptions extends ManagedSkillStoreOptions {
+  readonly resolver: ManagedSkillReleaseResolver
+}
+
+/** Successful durable result for one managed install operation. */
+export interface ManagedSkillInstallResult {
+  readonly operation: 'install'
+  readonly receipt: ManagedSkillInstallReceipt
+}
+
+/** Install-result receipt fields safe for Host/RPC projection. */
+export type ManagedSkillInstallReceipt = Omit<ManagedSkillReceipt, 'sourceServer' | 'managedLocation'>
+
 /** Verified file record persisted in a managed package receipt. */
 export interface VerifiedSkillFile {
   readonly path: string
@@ -82,5 +114,9 @@ export type ManagedSkillAdmissionErrorCode =
   | 'IDENTITY_MISMATCH'
   | 'CANONICAL_NAME_CONFLICT'
   | 'IMMUTABLE_RELEASE_CONFLICT'
+  | 'IDEMPOTENCY_KEY_CONFLICT'
+  | 'RELEASE_UNAVAILABLE'
+  | 'OPERATION_IN_PROGRESS'
+  | 'OPERATION_RECORD_CORRUPT'
   | 'STORE_CORRUPT'
   | 'COMMIT_FAILED'

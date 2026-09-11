@@ -86,13 +86,17 @@ skill 名称为 kebab-case（`^[a-z0-9]+(?:-[a-z0-9]+)*$`）。本地提供方�
 
 ## 托管包准入
 
-`ManagedSkillStore` 是 Host 内部库，不是 Cordis 服务或 skill 提供方。它接收一个精确解析的 Community Skill 发布版本及完整 ZIP 字节，在唯一的私有暂存目录中验证归档，并通过一次目录重命名同时发布 `content/` 与 `receipt.json`。它不会让已准入内容变成可调用 skill；该转换由后续的托管提供方负责。
+`ManagedSkillStore` 是 Host 内部库，不是 Cordis 服务或 skill 提供方。它接收一个精确解析的 Community Skill 发布版本及完整 ZIP 字节，在唯一的私有暂存目录中验证归档，并通过一次目录重命名同时发布 `content/` 与 `receipt.json`。`ManagedInstallationService` 在该存储之上加入第一个生命周期操作：通过 Host 提供的 resolver、操作记录和幂等键安装一个确切发布版本。两个类都不会让已准入内容变成可调用 skill；该转换由后续的托管提供方负责。
 
 准入接受归档根目录中的 `SKILL.md`，或外包一层目录的包。它拒绝绝对路径、带盘符路径、父目录穿越、反斜杠路径、Windows 设备名与备用数据流名称、可移植名称重复、链接、设备、FIFO、混合根目录及过多条目；压缩字节数、声明的展开字节数和实际解码字节数均受调用方显式提供的限制约束。每个普通文件都必须匹配 Registry Instance 清单中的路径、大小和小写 SHA-256。SkillHub 指纹通过对清单路径排序，并对每个文件的一行 UTF-8 `path:sha256\n` 进行哈希来重新计算。
 
 暂存的 `SKILL.md` 通过文件系统提供方使用的同一个 `parseSkillDocument` 解析，其规范名称必须匹配解析后的目录名称。已提交收据记录 Registry Instance id、远程 namespace 与 slug、适配器、规范源服务器、规范名称、精确版本、已验证清单与指纹、安装时间、启用状态和托管内容位置。返回相同发布版本的幂等结果前，会验证已有收据、条目 mode 以及完整的内容文件与目录集合。不同远程身份不能占用已安装的同一规范名称。
 
 包文件、收据与最外层包目录在最后一次同父目录重命名提交发布前变为只读。此前的任何失败都会删除其唯一私有包。存储格式位于版本目录 `v1`；不受支持、可写、链接、缺失、新增或内容被修改的持久化条目会作为存储损坏失败，不会被修复或提升为有效安装。
+
+安装操作记录位于 `v1/operations/`，并与包 receipt 分开。running 记录会在 resolver 重新获取产物前保留一个由调用方提供的幂等键，owner-pid 目标锁会在所有者仍存活时拒绝另一服务实例的同目标安装。completed 记录会在 receipt 已验证后指向已提交的包目标。对同一目标重复使用同一键时，重启后会重放已完成结果而不会联系 Registry Instance；把该键用于另一目标会作为幂等键冲突失败。对同一目标使用不同键的第二个 live 操作会作为正在进行失败。
+
+启动恢复会创建私有根目录，删除遗留 staging 与 `.admitting-*` 目录，验证完整 receipt 和不可变内容，移除过期 running 操作记录和死亡目标锁，并只保留 receipt 仍能验证的 completed 操作记录。恢复绝不会提升部分包数据。安装结果公开的 receipt 投影不包含源服务器或托管内容路径。
 
 ```ts type-equiv
 /** Origin bucket for a skill contribution. The value is prompt-visible metadata, not precedence by itself. */

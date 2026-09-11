@@ -12,7 +12,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
 import { chmod, lstat, mkdir, open, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, posix, resolve } from 'node:path'
-import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
+import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { parseSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
 import { extractSkillArchive } from './archive.ts'
 import { fail, ManagedSkillAdmissionError } from './error.ts'
@@ -22,8 +22,13 @@ import type {
   CommunitySkillIdentity,
   ExpectedSkillFile,
   ManagedSkillAdmissionLimits,
+  ManagedInstallationServiceOptions,
+  ManagedSkillInstallReceipt,
+  ManagedSkillInstallRequest,
+  ManagedSkillInstallResult,
   ManagedSkillReceipt,
   ManagedSkillRelease,
+  ManagedSkillReleaseResolver,
   ManagedSkillStoreOptions,
   RegistryInstanceId,
   VerifiedSkillFile,
@@ -36,8 +41,13 @@ export type {
   ExpectedSkillFile,
   ManagedSkillAdmissionErrorCode,
   ManagedSkillAdmissionLimits,
+  ManagedInstallationServiceOptions,
+  ManagedSkillInstallReceipt,
+  ManagedSkillInstallRequest,
+  ManagedSkillInstallResult,
   ManagedSkillReceipt,
   ManagedSkillRelease,
+  ManagedSkillReleaseResolver,
   ManagedSkillStoreOptions,
   RegistryInstanceId,
   VerifiedSkillFile,
@@ -45,6 +55,8 @@ export type {
 
 const RECEIPT_FILE = 'receipt.json'
 const CONTENT_DIRECTORY = 'content'
+const OPERATION_DIRECTORY = 'operations'
+const TARGET_OPERATION_DIRECTORY = 'targets'
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 const FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/
 
@@ -58,6 +70,42 @@ export const registryInstanceId = (value: string): RegistryInstanceId => value a
 interface NormalizedRelease extends Omit<ManagedSkillRelease, 'manifest' | 'sourceServer'> {
   readonly manifest: readonly ExpectedSkillFile[]
   readonly sourceServer: string
+}
+
+interface InstallTarget {
+  readonly identity: CommunitySkillIdentity
+  readonly version: string
+}
+
+interface RunningInstallOperation {
+  readonly formatVersion: 1
+  readonly operation: 'install'
+  readonly status: 'running'
+  readonly targetKey: string
+  readonly ownerPid: number
+  readonly startedAt: string
+}
+
+interface CompletedInstallOperation {
+  readonly formatVersion: 1
+  readonly operation: 'install'
+  readonly status: 'completed'
+  readonly targetKey: string
+  readonly completedAt: string
+}
+
+type InstallOperationRecord = RunningInstallOperation | CompletedInstallOperation
+
+interface TargetInstallLock {
+  readonly formatVersion: 1
+  readonly targetKey: string
+  readonly ownerPid: number
+  readonly startedAt: string
+}
+
+interface ActiveInstallOperation {
+  readonly targetKey: string
+  readonly result: Promise<ManagedSkillInstallResult>
 }
 
 /** Host-internal store that admits immutable managed package versions. */
@@ -125,6 +173,44 @@ export class ManagedSkillStore {
       if (error instanceof ManagedSkillAdmissionError) throw error
       fail('Managed Community Skill admission could not commit.', 'COMMIT_FAILED', error)
     }
+  }
+
+  /**
+   * Reconcile storage after process restart and return verified packages.
+   * @returns complete durable receipts still owned by this managed store.
+   */
+  async recover(): Promise<readonly ManagedSkillReceipt[]> {
+    await this.prepareStorage()
+    await cleanupDirectory(this.stagingRoot)
+    const receipts: ManagedSkillReceipt[] = []
+    const entries = await readdir(this.packagesRoot, { withFileTypes: true, encoding: 'utf8' })
+    for (const entry of entries) {
+      const path = join(this.packagesRoot, entry.name)
+      if (entry.name.startsWith('.admitting-')) {
+        await removeStaging(path)
+        continue
+      }
+      if (!entry.isDirectory()) fail(`Managed package store contains unsupported entry "${entry.name}".`, 'STORE_CORRUPT')
+      receipts.push(await readReceipt(path))
+    }
+    return receipts
+  }
+
+  /**
+   * Read all complete managed package receipts without cleanup.
+   * @returns verified durable receipts.
+   */
+  async listReceipts(): Promise<readonly ManagedSkillReceipt[]> {
+    await this.prepareStorage()
+    const receipts: ManagedSkillReceipt[] = []
+    const entries = await readdir(this.packagesRoot, { withFileTypes: true, encoding: 'utf8' })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.admitting-')) {
+        fail(`Managed package store contains unsupported entry "${entry.name}".`, 'STORE_CORRUPT')
+      }
+      receipts.push(await readReceipt(join(this.packagesRoot, entry.name)))
+    }
+    return receipts
   }
 
   private async prepareStorage(): Promise<void> {
@@ -204,6 +290,141 @@ export class ManagedSkillStore {
   }
 }
 
+/** Host-owned lifecycle service for exact managed installs. */
+export class ManagedInstallationService {
+  private readonly store: ManagedSkillStore
+  private readonly resolver: ManagedSkillReleaseResolver
+  private readonly operationRoot: string
+  private readonly targetOperationRoot: string
+  private readonly now: () => Date
+  private readonly activeTargets = new Set<string>()
+  private readonly activeOperations = new Map<string, ActiveInstallOperation>()
+  private ready: Promise<void> | undefined
+
+  /**
+   * Create a lifecycle service over one managed installation root.
+   * @param options - storage, admission limits, resolver, and optional clock.
+   */
+  constructor(options: ManagedInstallationServiceOptions) {
+    this.store = new ManagedSkillStore(options)
+    this.resolver = options.resolver
+    this.operationRoot = join(this.store.root, OPERATION_DIRECTORY)
+    this.targetOperationRoot = join(this.operationRoot, TARGET_OPERATION_DIRECTORY)
+    this.now = options.now ?? (() => new Date())
+  }
+
+  /**
+   * Reconcile package and operation state after process restart.
+   * @returns complete installed package receipts after recovery.
+   */
+  async recover(): Promise<readonly ManagedSkillReceipt[]> {
+    const receipts = await this.store.recover()
+    await ensurePrivateDirectory(this.operationRoot)
+    await ensurePrivateDirectory(this.targetOperationRoot)
+    await cleanupStaleTargetLocks(this.targetOperationRoot)
+    const entries = await readdir(this.operationRoot, { withFileTypes: true, encoding: 'utf8' })
+    for (const entry of entries) {
+      if (entry.name === TARGET_OPERATION_DIRECTORY && entry.isDirectory()) continue
+      const path = join(this.operationRoot, entry.name)
+      if (!entry.isFile()) fail(`Managed installation operation store contains unsupported entry "${entry.name}".`, 'OPERATION_RECORD_CORRUPT')
+      const record = await readInstallOperation(path)
+      if (record.status === 'running') {
+        if (!isProcessAlive(record.ownerPid)) await rm(path, { force: true })
+        continue
+      }
+      await receiptForCompletedOperation(this.store.root, record)
+    }
+    return receipts
+  }
+
+  /**
+   * Install one exact Community Skill release with an idempotency key.
+   * @param request - exact identity, version, and caller-minted idempotency key.
+   * @param signal - optional cancellation before the durable commit point.
+   * @returns durable install result.
+   */
+  async install(request: ManagedSkillInstallRequest, signal?: AbortSignal): Promise<ManagedSkillInstallResult> {
+    const target = normalizeInstallRequest(request)
+    const operationKey = operationKeyFor(request.idempotencyKey)
+    const targetKey = packageKey(target)
+    const active = this.activeOperations.get(operationKey)
+    if (active !== undefined) {
+      assertSameOperationTarget(active.targetKey, targetKey)
+      return await active.result
+    }
+    const operation = this.performInstall(target, targetKey, request.idempotencyKey, signal)
+    this.activeOperations.set(operationKey, { targetKey, result: operation })
+    try {
+      return await operation
+    } finally {
+      this.activeOperations.delete(operationKey)
+    }
+  }
+
+  private async performInstall(
+    target: InstallTarget,
+    targetKey: string,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<ManagedSkillInstallResult> {
+    await this.ensureReady()
+    signal?.throwIfAborted()
+    const operationPath = this.operationPath(idempotencyKey)
+    const existing = await readInstallOperationIfPresent(operationPath)
+    if (existing !== undefined) assertSameOperationTarget(existing.targetKey, targetKey)
+    if (existing?.status === 'completed') return await replayCompletedInstall(this.store.root, existing)
+    if (existing?.status === 'running') fail('Managed installation operation is already in progress.', 'OPERATION_IN_PROGRESS')
+    if (this.activeTargets.has(targetKey)) fail('Managed installation operation is already in progress.', 'OPERATION_IN_PROGRESS')
+    this.activeTargets.add(targetKey)
+    let committed: ManagedSkillReceipt | undefined
+    let targetLock: (() => Promise<void>) | undefined
+    try {
+      targetLock = await acquireTargetInstallLock(this.targetOperationRoot, targetKey, this.now)
+      await writeInstallOperation(operationPath, {
+        formatVersion: 1,
+        operation: 'install',
+        status: 'running',
+        targetKey,
+        ownerPid: process.pid,
+        startedAt: this.now().toISOString(),
+      })
+      const release = await resolveInstallRelease(this.resolver, target, signal)
+      assertResolvedReleaseMatches(target, release)
+      committed = await this.store.admit(release, signal)
+      await writeInstallOperation(operationPath, {
+        formatVersion: 1,
+        operation: 'install',
+        status: 'completed',
+        targetKey,
+        completedAt: this.now().toISOString(),
+      })
+      return { operation: 'install', receipt: projectInstallReceipt(committed) }
+    } catch (error) {
+      if (committed !== undefined) {
+        fail('Managed installation completed, but its idempotency record could not be persisted.', 'OPERATION_RECORD_CORRUPT')
+      }
+      await rm(operationPath, { force: true }).catch(() => {})
+      signal?.throwIfAborted()
+      if (error instanceof ManagedSkillAdmissionError) throw error
+      fail('Managed installation operation failed before durable commit.', 'COMMIT_FAILED', error)
+    } finally {
+      if (targetLock !== undefined) await targetLock().catch(() => {})
+      this.activeTargets.delete(targetKey)
+    }
+    /* v8 ignore next -- the try/catch above always returns or throws. */
+    throw new Error('managed installation invariant failed')
+  }
+
+  private operationPath(idempotencyKey: string): string {
+    return join(this.operationRoot, `${operationKeyFor(idempotencyKey)}.json`)
+  }
+
+  private async ensureReady(): Promise<void> {
+    this.ready ??= this.recover().then(() => {})
+    await this.ready
+  }
+}
+
 function normalizeRelease(release: ManagedSkillRelease): NormalizedRelease {
   for (const [field, value] of [
     ['registryInstanceId', release.identity.registryInstanceId],
@@ -260,6 +481,52 @@ function isSafeManifestPath(path: string): boolean {
   return !path.endsWith('/') && isSafeManagedPath(path)
 }
 
+function normalizeInstallRequest(request: ManagedSkillInstallRequest): InstallTarget {
+  for (const [field, value] of [
+    ['registryInstanceId', request.identity.registryInstanceId],
+    ['namespace', request.identity.namespace],
+    ['slug', request.identity.slug],
+    ['version', request.version],
+    ['idempotencyKey', request.idempotencyKey],
+  ] as const) {
+    if (value === '' || value.trim() !== value || value.includes('\0')) {
+      fail(`Managed installation ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
+    }
+  }
+  return {
+    identity: { ...request.identity },
+    version: request.version,
+  }
+}
+
+function assertResolvedReleaseMatches(target: InstallTarget, release: ManagedSkillRelease): void {
+  if (release.identity.registryInstanceId !== target.identity.registryInstanceId
+    || release.identity.namespace !== target.identity.namespace
+    || release.identity.slug !== target.identity.slug
+    || release.version !== target.version) {
+    fail('Registry Instance resolved a different Community Skill release than requested.', 'IMMUTABLE_RELEASE_CONFLICT')
+  }
+}
+
+async function resolveInstallRelease(
+  resolver: ManagedSkillReleaseResolver,
+  target: InstallTarget,
+  signal?: AbortSignal,
+): Promise<ManagedSkillRelease> {
+  try {
+    return await resolver.resolve(target, signal)
+  } catch (error) {
+    signal?.throwIfAborted()
+    fail('Managed installation release is unavailable.', 'RELEASE_UNAVAILABLE', error)
+  }
+}
+
+function assertSameOperationTarget(recordedTargetKey: string, targetKey: string): void {
+  if (recordedTargetKey !== targetKey) {
+    fail('Managed installation idempotency key is already bound to another install target.', 'IDEMPOTENCY_KEY_CONFLICT')
+  }
+}
+
 function validateLimits(limits: ManagedSkillAdmissionLimits): void {
   for (const [field, value] of Object.entries(limits)) {
     if (!Number.isSafeInteger(value) || value < 1) fail(`Managed skill admission limit ${field} must be a positive safe integer.`, 'INVALID_REQUEST')
@@ -303,11 +570,153 @@ function packageKey(release: Pick<NormalizedRelease, 'identity' | 'version'>): s
   ].join('\0'), 'utf8').digest('hex')
 }
 
+function operationKeyFor(idempotencyKey: string): string {
+  if (idempotencyKey === '' || idempotencyKey.trim() !== idempotencyKey || idempotencyKey.includes('\0')) {
+    fail('Managed installation idempotency key must be a non-empty trimmed string.', 'INVALID_REQUEST')
+  }
+  return createHash('sha256').update(idempotencyKey, 'utf8').digest('hex')
+}
+
 async function ensurePrivateDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: 0o700 })
   const info = await lstat(path)
   if (!info.isDirectory() || info.isSymbolicLink()) fail(`Managed package storage path "${path}" is not a real directory.`, 'STORE_CORRUPT')
   await chmod(path, 0o700)
+}
+
+async function cleanupDirectory(path: string): Promise<void> {
+  const entries = await readdir(path, { withFileTypes: true, encoding: 'utf8' })
+  for (const entry of entries) await removeStaging(join(path, entry.name))
+}
+
+async function writeInstallOperation(path: string, record: InstallOperationRecord): Promise<void> {
+  await writeFileAtomic(path, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600, dirMode: 0o700 })
+}
+
+async function acquireTargetInstallLock(
+  root: string,
+  targetKey: string,
+  now: () => Date,
+): Promise<() => Promise<void>> {
+  await ensurePrivateDirectory(root)
+  const path = join(root, `${targetKey}.json`)
+  for (;;) {
+    try {
+      const record: TargetInstallLock = {
+        formatVersion: 1,
+        targetKey,
+        ownerPid: process.pid,
+        startedAt: now().toISOString(),
+      }
+      await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600, flag: 'wx' })
+      return async () => { await rm(path, { force: true }) }
+    } catch (error) {
+      if (!isCode(error, 'EEXIST')) throw error
+    }
+    const stale = await isStaleTargetLock(path, targetKey)
+    if (!stale) fail('Managed installation operation is already in progress.', 'OPERATION_IN_PROGRESS')
+    await rm(path, { force: true })
+  }
+}
+
+async function cleanupStaleTargetLocks(root: string): Promise<void> {
+  const entries = await readdir(root, { withFileTypes: true, encoding: 'utf8' })
+  for (const entry of entries) {
+    const path = join(root, entry.name)
+    if (!entry.isFile()) fail(`Managed installation target operation store contains unsupported entry "${entry.name}".`, 'OPERATION_RECORD_CORRUPT')
+    if (await isStaleTargetLock(path)) await rm(path, { force: true })
+  }
+}
+
+async function isStaleTargetLock(path: string, expectedTargetKey?: string): Promise<boolean> {
+  const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
+  if (!isRecord(raw) || raw.formatVersion !== 1 || typeof raw.targetKey !== 'string' || !SHA256_PATTERN.test(raw.targetKey)
+    || typeof raw.ownerPid !== 'number' || !Number.isSafeInteger(raw.ownerPid) || raw.ownerPid < 1
+    || !isCanonicalIsoTime(raw.startedAt)) {
+    return true
+  }
+  if (expectedTargetKey !== undefined && raw.targetKey !== expectedTargetKey) return true
+  return !isProcessAlive(raw.ownerPid)
+}
+
+async function readInstallOperationIfPresent(path: string): Promise<InstallOperationRecord | undefined> {
+  try {
+    return await readInstallOperation(path)
+  } catch (error) {
+    if (isCode(error, 'ENOENT')) return undefined
+    throw error
+  }
+}
+
+async function readInstallOperation(path: string): Promise<InstallOperationRecord> {
+  try {
+    const info = await lstat(path)
+    if (!info.isFile() || info.isSymbolicLink()) {
+      fail('Managed installation operation record is not a real file.', 'OPERATION_RECORD_CORRUPT')
+    }
+    const raw: unknown = JSON.parse(await readFile(path, 'utf8'))
+    return validateInstallOperation(raw)
+  } catch (error) {
+    if (isCode(error, 'ENOENT')) throw error
+    if (error instanceof ManagedSkillAdmissionError) throw error
+    fail('Managed installation operation record is unreadable.', 'OPERATION_RECORD_CORRUPT', error)
+  }
+}
+
+function validateInstallOperation(value: unknown): InstallOperationRecord {
+  if (!isRecord(value) || value.formatVersion !== 1 || value.operation !== 'install'
+    || typeof value.status !== 'string' || typeof value.targetKey !== 'string' || !SHA256_PATTERN.test(value.targetKey)) {
+    fail('Managed installation operation record has an unsupported format.', 'OPERATION_RECORD_CORRUPT')
+  }
+  if (value.status === 'running') {
+    if (typeof value.ownerPid !== 'number' || !Number.isSafeInteger(value.ownerPid) || value.ownerPid < 1
+      || !isCanonicalIsoTime(value.startedAt)) {
+      fail('Managed installation operation record has an invalid start time.', 'OPERATION_RECORD_CORRUPT')
+    }
+    return {
+      formatVersion: 1,
+      operation: 'install',
+      status: 'running',
+      targetKey: value.targetKey,
+      ownerPid: value.ownerPid,
+      startedAt: value.startedAt,
+    }
+  }
+  if (value.status === 'completed') {
+    if (!isCanonicalIsoTime(value.completedAt)) {
+      fail('Managed installation operation record has an invalid completion time.', 'OPERATION_RECORD_CORRUPT')
+    }
+    return {
+      formatVersion: 1,
+      operation: 'install',
+      status: 'completed',
+      targetKey: value.targetKey,
+      completedAt: value.completedAt,
+    }
+  }
+  fail('Managed installation operation record has an unsupported status.', 'OPERATION_RECORD_CORRUPT')
+}
+
+async function replayCompletedInstall(root: string, record: CompletedInstallOperation): Promise<ManagedSkillInstallResult> {
+  return { operation: 'install', receipt: projectInstallReceipt(await receiptForCompletedOperation(root, record)) }
+}
+
+async function receiptForCompletedOperation(root: string, record: CompletedInstallOperation): Promise<ManagedSkillReceipt> {
+  return await readReceipt(join(root, 'packages', record.targetKey))
+}
+
+function projectInstallReceipt(receipt: ManagedSkillReceipt): ManagedSkillInstallReceipt {
+  return {
+    formatVersion: receipt.formatVersion,
+    identity: receipt.identity,
+    adapter: receipt.adapter,
+    canonicalName: receipt.canonicalName,
+    version: receipt.version,
+    manifest: receipt.manifest,
+    fingerprint: receipt.fingerprint,
+    installedAt: receipt.installedAt,
+    enabled: receipt.enabled,
+  }
 }
 
 async function readReceiptIfPresent(packagePath: string): Promise<ManagedSkillReceipt | undefined> {
@@ -585,6 +994,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCode(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (isCode(error, 'ESRCH')) return false
+    return true
+  }
 }
 
 function compareManifestPaths(left: ExpectedSkillFile, right: ExpectedSkillFile): number {

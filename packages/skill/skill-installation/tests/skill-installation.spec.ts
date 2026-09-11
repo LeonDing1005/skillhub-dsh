@@ -7,10 +7,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Zip, ZipPassThrough } from 'fflate'
 import {
   computeSkillHubFingerprint,
+  ManagedInstallationService,
   ManagedSkillStore,
   registryInstanceId,
   type ExpectedSkillFile,
   type ManagedSkillAdmissionErrorCode,
+  type ManagedSkillInstallRequest,
   type ManagedSkillRelease,
 } from '../src/index.ts'
 
@@ -123,6 +125,49 @@ function store(root: string, overrides: Partial<ConstructorParameters<typeof Man
     now: () => new Date('2026-08-26T01:00:00.000Z'),
     ...overrides,
   })
+}
+
+function installRequest(overrides: Partial<ManagedSkillInstallRequest> = {}): ManagedSkillInstallRequest {
+  return {
+    identity: {
+      registryInstanceId: registryInstanceId('primary'),
+      namespace: 'global',
+      slug: 'weather',
+    },
+    version: '1.0.0',
+    idempotencyKey: 'install-weather-1',
+    ...overrides,
+  }
+}
+
+function service(
+  root: string,
+  releases: readonly ManagedSkillRelease[],
+  overrides: Partial<ConstructorParameters<typeof ManagedInstallationService>[0]> = {},
+): { service: ManagedInstallationService; calls: ManagedSkillInstallRequest[] } {
+  const calls: ManagedSkillInstallRequest[] = []
+  const resolver = {
+    async resolve(request: Pick<ManagedSkillInstallRequest, 'identity' | 'version'>): Promise<ManagedSkillRelease> {
+      calls.push({ ...request, idempotencyKey: `call-${String(calls.length)}` })
+      const found = releases.find(candidate =>
+        candidate.identity.registryInstanceId === request.identity.registryInstanceId
+        && candidate.identity.namespace === request.identity.namespace
+        && candidate.identity.slug === request.identity.slug
+        && candidate.version === request.version)
+      if (found === undefined) throw new Error('release unavailable')
+      return found
+    },
+  }
+  return {
+    calls,
+    service: new ManagedInstallationService({
+      root,
+      limits: { maxCompressedBytes: 1_000_000, maxExpandedBytes: 1_000_000, maxEntryCount: 20 },
+      now: () => new Date('2026-08-26T01:00:00.000Z'),
+      resolver,
+      ...overrides,
+    }),
+  }
 }
 
 async function expectAdmissionError(
@@ -745,5 +790,172 @@ describe('ManagedSkillStore', () => {
       now: () => { throw new Error('clock unavailable') },
     }).admit(input), 'COMMIT_FAILED')
     await expectNoResidue(root)
+  })
+})
+
+describe('ManagedInstallationService', () => {
+  it('installs an exact release and replays the completed idempotency result after restart', async () => {
+    const root = await tempRoot('managed-install-service')
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    const firstService = service(root, [input])
+
+    const first = await firstService.service.install(installRequest())
+
+    expect(first.operation).toBe('install')
+    expect(first.receipt.canonicalName).toBe('weather')
+    expect(first.receipt).not.toHaveProperty('sourceServer')
+    expect(first.receipt).not.toHaveProperty('managedLocation')
+    expect(firstService.calls).toHaveLength(1)
+
+    const restarted = service(root, [])
+    const replay = await restarted.service.install(installRequest())
+
+    expect(replay.receipt).toEqual(first.receipt)
+    expect(restarted.calls).toHaveLength(0)
+  })
+
+  it('rejects idempotency key reuse for another install target', async () => {
+    const root = await tempRoot('managed-install-idempotency-conflict')
+    const weather = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    const forecast = await release([{ path: 'SKILL.md', content: skillDocument('forecast') }], {
+      identity: { namespace: 'global', slug: 'forecast' },
+      canonicalName: 'forecast',
+    })
+    const installing = service(root, [weather, forecast])
+
+    await installing.service.install(installRequest())
+    await expectAdmissionError(installing.service.install(installRequest({
+      identity: { registryInstanceId: registryInstanceId('primary'), namespace: 'global', slug: 'forecast' },
+    })), 'IDEMPOTENCY_KEY_CONFLICT')
+    expect(installing.calls).toHaveLength(1)
+  })
+
+  it('rejects a different concurrent key for the same exact installation target', async () => {
+    const root = await tempRoot('managed-install-concurrent')
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    let markStarted!: () => void
+    const started = new Promise<void>((resolve) => { markStarted = resolve })
+    let releaseResolver!: () => void
+    const blocker = new Promise<void>((resolve) => { releaseResolver = resolve })
+    const installing = new ManagedInstallationService({
+      root,
+      limits: { maxCompressedBytes: 1_000_000, maxExpandedBytes: 1_000_000, maxEntryCount: 20 },
+      now: () => new Date('2026-08-26T01:00:00.000Z'),
+      resolver: {
+        async resolve(): Promise<ManagedSkillRelease> {
+          markStarted()
+          await blocker
+          return input
+        },
+      },
+    })
+
+    const first = installing.install(installRequest({ idempotencyKey: 'first-key' }))
+    await started
+
+    await expectAdmissionError(
+      installing.install(installRequest({ idempotencyKey: 'second-key' })),
+      'OPERATION_IN_PROGRESS',
+    )
+    releaseResolver()
+    await expect(first).resolves.toMatchObject({ receipt: { canonicalName: 'weather' } })
+  })
+
+  it('rejects a concurrent same-target install from another service instance', async () => {
+    const root = await tempRoot('managed-install-concurrent-instance')
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    let markStarted!: () => void
+    const started = new Promise<void>((resolve) => { markStarted = resolve })
+    let releaseResolver!: () => void
+    const blocker = new Promise<void>((resolve) => { releaseResolver = resolve })
+    const first = service(root, [], {
+      resolver: {
+        async resolve(): Promise<ManagedSkillRelease> {
+          markStarted()
+          await blocker
+          return input
+        },
+      },
+    }).service
+    const second = service(root, [input]).service
+
+    const installing = first.install(installRequest({ idempotencyKey: 'first-key' }))
+    await started
+
+    await expectAdmissionError(
+      second.install(installRequest({ idempotencyKey: 'second-key' })),
+      'OPERATION_IN_PROGRESS',
+    )
+    releaseResolver()
+    await expect(installing).resolves.toMatchObject({ receipt: { canonicalName: 'weather' } })
+  })
+
+  it('removes a failed install operation record so the same key can retry', async () => {
+    const root = await tempRoot('managed-install-retry-after-failure')
+    const failing = service(root, [])
+
+    await expectAdmissionError(failing.service.install(installRequest()), 'RELEASE_UNAVAILABLE')
+    await expectNoResidue(root)
+
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    await expect(service(root, [input]).service.install(installRequest())).resolves.toMatchObject({
+      receipt: { canonicalName: 'weather' },
+    })
+  })
+
+  it('rejects a resolved release that does not match the exact request', async () => {
+    const root = await tempRoot('managed-install-changed-release')
+    const changed = await release([{ path: 'SKILL.md', content: skillDocument() }], { version: '2.0.0' })
+
+    const changedService = service(root, [], {
+      resolver: {
+        async resolve(): Promise<ManagedSkillRelease> {
+          return changed
+        },
+      },
+    })
+
+    await expectAdmissionError(changedService.service.install(installRequest()), 'IMMUTABLE_RELEASE_CONFLICT')
+    await expectNoResidue(root)
+  })
+
+  it('reports corrupt operation records without exposing the local storage path', async () => {
+    const root = await tempRoot('managed-install-safe-operation-error')
+    const operationPath = join(root, 'v1', 'operations', `${'1'.repeat(64)}.json`)
+    await mkdir(join(root, 'v1', 'operations'), { recursive: true })
+    await writeFile(operationPath, '{"formatVersion":1,"operation":"install","status":"completed","targetKey":"not-a-key","completedAt":"2026-08-26T01:00:00.000Z"}\n')
+
+    await expect(service(root, []).service.recover()).rejects.toMatchObject({
+      name: 'ManagedSkillAdmissionError',
+      code: 'OPERATION_RECORD_CORRUPT',
+      message: expect.not.stringContaining(root),
+    })
+  })
+
+  it('cleans incomplete package and operation state during startup recovery', async () => {
+    const root = await tempRoot('managed-install-recovery')
+    const input = await release([{ path: 'SKILL.md', content: skillDocument() }])
+    await service(root, [input]).service.install(installRequest())
+    const versioned = join(root, 'v1')
+    await mkdir(join(versioned, 'staging', 'abandoned', 'content'), { recursive: true })
+    await writeFile(join(versioned, 'staging', 'abandoned', 'content', 'partial'), 'partial')
+    await mkdir(join(versioned, 'packages', '.admitting-abandoned', 'content'), { recursive: true })
+    await writeFile(join(versioned, 'packages', '.admitting-abandoned', 'content', 'partial'), 'partial')
+    await mkdir(join(versioned, 'operations'), { recursive: true })
+    await writeFile(join(versioned, 'operations', `${'0'.repeat(64)}.json`), `${JSON.stringify({
+      formatVersion: 1,
+      operation: 'install',
+      status: 'running',
+      targetKey: '0'.repeat(64),
+      ownerPid: 2_147_483_647,
+      startedAt: '2026-08-26T01:00:00.000Z',
+    })}\n`)
+
+    const receipts = await service(root, []).service.recover()
+
+    expect(receipts.map(receipt => receipt.canonicalName)).toEqual(['weather'])
+    expect(await readdir(join(versioned, 'staging'))).toEqual([])
+    expect(await readdir(join(versioned, 'packages'))).not.toContain('.admitting-abandoned')
+    expect(await readdir(join(versioned, 'operations'))).not.toContain(`${'0'.repeat(64)}.json`)
   })
 })
