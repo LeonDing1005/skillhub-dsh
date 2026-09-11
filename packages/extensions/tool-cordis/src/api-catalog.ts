@@ -2848,10 +2848,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CommunitySkillFile {\n    readonly path: string;\n    readonly size: number;\n    readonly contentType: string;\n    readonly sha256: string;\n}',
   },
   {
-    name: 'CommunitySkillIdentity',
-    declaration: 'export interface CommunitySkillIdentity {\n    readonly registryInstanceId: RegistryInstanceId;\n    readonly namespace: string;\n    readonly slug: string;\n    readonly version: string;\n}',
-  },
-  {
     name: 'CommunitySkillIdentityPayload',
     declaration: 'export interface CommunitySkillIdentityPayload {\n    readonly registryInstanceId: string;\n    readonly namespace: string;\n    readonly slug: string;\n    readonly version: string;\n}',
   },
@@ -3646,10 +3642,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
-  },
-  {
-    name: 'RegistryInstanceId',
-    declaration: 'export type RegistryInstanceId = Branded<\'RegistryInstanceId\'>;',
   },
   {
     name: 'RequestContext',
