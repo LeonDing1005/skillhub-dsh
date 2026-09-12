@@ -38,15 +38,17 @@ describe('ManagedSkillProvider', () => {
     if ('complete' in listed) throw new Error('expected complete managed provider discovery')
     const candidates = listed
     expect(candidates).toHaveLength(1)
-    expect(candidates[0]).toMatchObject({
+    const candidate = candidates[0]
+    if (candidate === undefined) throw new Error('expected a managed skill candidate')
+    expect(candidate).toMatchObject({
       description: 'Parsed managed demo',
       whenToUse: 'Use for managed demos',
       invocation: { modelInvocable: false, userInvocable: false },
       resourceBase: { kind: 'opaque', description: 'Resources are managed by the local Skill Center.' },
     })
-    expect(candidates[0]).not.toHaveProperty('path')
-    expect(candidates[0]).not.toHaveProperty('sourceServer')
-    const definition = await provider.get(candidates[0], {})
+    expect(candidate).not.toHaveProperty('path')
+    expect(candidate).not.toHaveProperty('sourceServer')
+    const definition = await provider.get(candidate, {})
     expect(definition).toMatchObject({
       name: 'managed-demo',
       description: 'Parsed managed demo',
