@@ -842,18 +842,22 @@ function isSafeManifestPath(path: string): boolean {
   return !path.endsWith('/') && isSafeManagedPath(path)
 }
 
+function validateRequestStrings(fields: readonly (readonly [string, string])[], subject: string): void {
+  for (const [field, value] of fields) {
+    if (value === '' || value.trim() !== value || value.includes('\0')) {
+      fail(`${subject} ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
+    }
+  }
+}
+
 function normalizeInstallRequest(request: ManagedSkillInstallRequest): InstallTarget {
-  for (const [field, value] of [
+  validateRequestStrings([
     ['registryInstanceId', request.identity.registryInstanceId],
     ['namespace', request.identity.namespace],
     ['slug', request.identity.slug],
     ['version', request.version],
     ['idempotencyKey', request.idempotencyKey],
-  ] as const) {
-    if (value === '' || value.trim() !== value || value.includes('\0')) {
-      fail(`Managed installation ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
-    }
-  }
+  ], 'Managed installation')
   return {
     identity: { ...request.identity },
     version: request.version,
@@ -861,33 +865,25 @@ function normalizeInstallRequest(request: ManagedSkillInstallRequest): InstallTa
 }
 
 function normalizeLifecycleRequest(request: ManagedSkillLifecycleRequest): InstallTarget {
-  for (const [field, value] of [
+  validateRequestStrings([
     ['registryInstanceId', request.identity.registryInstanceId],
     ['namespace', request.identity.namespace],
     ['slug', request.identity.slug],
     ['version', request.version],
     ['idempotencyKey', request.idempotencyKey],
-  ] as const) {
-    if (value === '' || value.trim() !== value || value.includes('\0')) {
-      fail(`Managed lifecycle ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
-    }
-  }
+  ], 'Managed lifecycle')
   return { identity: { ...request.identity }, version: request.version }
 }
 
 function normalizeUpdateRequest(request: ManagedSkillUpdateRequest): UpdateTarget {
-  for (const [field, value] of [
+  validateRequestStrings([
     ['registryInstanceId', request.identity.registryInstanceId],
     ['namespace', request.identity.namespace],
     ['slug', request.identity.slug],
     ['fromVersion', request.fromVersion],
     ['toVersion', request.toVersion],
     ['idempotencyKey', request.idempotencyKey],
-  ] as const) {
-    if (value === '' || value.trim() !== value || value.includes('\0')) {
-      fail(`Managed update ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
-    }
-  }
+  ], 'Managed update')
   if (request.fromVersion === request.toVersion) fail('Managed update requires different source and target versions.', 'INVALID_REQUEST')
   return { identity: { ...request.identity }, fromVersion: request.fromVersion, toVersion: request.toVersion }
 }
