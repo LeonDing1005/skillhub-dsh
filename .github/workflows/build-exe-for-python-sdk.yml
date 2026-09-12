@@ -215,6 +215,9 @@ jobs:
           for fragment in node_addon_api.target.mk node_addon_api_except.target.mk node_addon_api_maybe.target.mk; do
             cp "$addon_api_dir/$fragment" "$make_api_dir/$fragment"
           done
+          # The fragments and headers were prepared above; keep make from
+          # rerunning the host gyp entrypoint inside the read-only container.
+          touch "$addon_dir/build/Makefile"
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -v "$PWD:$PWD" \
