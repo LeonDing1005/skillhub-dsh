@@ -41,6 +41,7 @@ export type {
   SessionSummary, SettingsNamespaceView, SettingsPathOpView,
   CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillFileEntry, CommunitySkillIdentityPayload,
   CommunitySkillLabelEntry, CommunitySkillListPayload, CommunitySkillListValue, CommunitySkillVersionEntry,
+  ManagedSkillInstallationEntry, ManagedSkillInstallationListValue, ManagedSkillInstallationMutationPayload,
   SkillEntry, StreamChunk,
   SubagentAddress, SubagentCatalog, JobView, ToolCallView, ToolEventView, ToolResultView,
   WorkspaceId, WorkspaceView,

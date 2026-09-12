@@ -665,7 +665,7 @@ export class ManagedSkillProvider implements SkillProvider {
 
   async get(candidate: SkillCandidate, _options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
     const locator = candidate.locator as ManagedSkillLocator
-    const raw = await readFile(join(locator.receipt.managedLocation, 'SKILL.md'), 'utf8').catch((error) => {
+    const raw = await readFile(join(locator.receipt.managedLocation, 'SKILL.md'), 'utf8').catch((error: unknown) => {
       if (isCode(error, 'ENOENT')) return undefined
       throw error
     })

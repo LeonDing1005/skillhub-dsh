@@ -4818,6 +4818,9 @@ importers:
       '@deepseek-ai/dsh-skill':
         specifier: workspace:^
         version: link:../../skill/skill
+      '@deepseek-ai/dsh-skill-installation':
+        specifier: workspace:^
+        version: link:../../skill/skill-installation
       '@deepseek-ai/dsh-skill-marketplace':
         specifier: workspace:^
         version: link:../../skill/skill-marketplace

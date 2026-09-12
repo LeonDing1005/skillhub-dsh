@@ -42,6 +42,9 @@ import {
 } from '../api/workspace.schema.ts'
 import {
   skillCommunityGetValueSchema, skillCommunityListValueSchema, skillListValueSchema,
+  skillInstallationListValueSchema, skillInstallationInstallValueSchema,
+  skillInstallationUpdateValueSchema, skillInstallationSetEnabledValueSchema,
+  skillInstallationUninstallValueSchema,
 } from '../api/skills.schema.ts'
 import {
   agentPresetCopyValueSchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
@@ -127,6 +130,11 @@ export interface IApiClient {
     list(payload: RequestPayload<'skill.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.list'>>>
     communityList(payload: RequestPayload<'skill.communityList'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.communityList'>>>
     communityGet(payload: RequestPayload<'skill.communityGet'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.communityGet'>>>
+    installationList?(payload: RequestPayload<'skill.installationList'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationList'>>>
+    installationInstall?(payload: RequestPayload<'skill.installationInstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationInstall'>>>
+    installationUpdate?(payload: RequestPayload<'skill.installationUpdate'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationUpdate'>>>
+    installationSetEnabled?(payload: RequestPayload<'skill.installationSetEnabled'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationSetEnabled'>>>
+    installationUninstall?(payload: RequestPayload<'skill.installationUninstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationUninstall'>>>
   }
   agentPresets: {
     list(payload: RequestPayload<'agentPreset.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'agentPreset.list'>>>
@@ -205,6 +213,11 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'skill.list': skillListValueSchema,
   'skill.communityList': skillCommunityListValueSchema,
   'skill.communityGet': skillCommunityGetValueSchema,
+  'skill.installationList': skillInstallationListValueSchema,
+  'skill.installationInstall': skillInstallationInstallValueSchema,
+  'skill.installationUpdate': skillInstallationUpdateValueSchema,
+  'skill.installationSetEnabled': skillInstallationSetEnabledValueSchema,
+  'skill.installationUninstall': skillInstallationUninstallValueSchema,
   'agentPreset.list': agentPresetListValueSchema,
   'agentPreset.select': agentPresetSelectValueSchema,
   'agentPreset.read': agentPresetReadValueSchema,
@@ -463,6 +476,11 @@ export abstract class AbstractApiClient implements IApiClient {
     list: (payload, signal) => this.callUnary('skill.list', payload, signal),
     communityList: (payload, signal) => this.callUnary('skill.communityList', payload, signal),
     communityGet: (payload, signal) => this.callUnary('skill.communityGet', payload, signal),
+    installationList: (payload, signal) => this.callUnary('skill.installationList', payload, signal),
+    installationInstall: (payload, signal) => this.callUnary('skill.installationInstall', payload, signal),
+    installationUpdate: (payload, signal) => this.callUnary('skill.installationUpdate', payload, signal),
+    installationSetEnabled: (payload, signal) => this.callUnary('skill.installationSetEnabled', payload, signal),
+    installationUninstall: (payload, signal) => this.callUnary('skill.installationUninstall', payload, signal),
   }
 
   // Annotated like every sibling, and load-bearing rather than cosmetic:

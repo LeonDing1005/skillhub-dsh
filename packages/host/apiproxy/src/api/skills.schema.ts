@@ -111,3 +111,21 @@ export const skillCommunityGetValueSchema = skillCommunityIdentitySchema.extend(
   files: z.array(skillCommunityFileSchema),
   installCommand: z.string(),
 }) satisfies z.ZodType<Wire<CommunitySkillDetailValue>>
+
+const managedInstallationEntrySchema = skillCommunityIdentitySchema.extend({
+  canonicalName: z.string().min(1),
+  enabled: z.boolean(),
+  installedAt: z.string(),
+  fingerprint: z.string(),
+})
+export const skillInstallationListRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'skill.installationList'>>>
+export const skillInstallationListValueSchema = z.object({ items: z.array(managedInstallationEntrySchema) }) satisfies z.ZodType<Wire<ResponseValue<'skill.installationList'>>>
+const skillInstallationMutationSchema = skillCommunityIdentitySchema.extend({ idempotencyKey: z.string().min(1) })
+export const skillInstallationInstallRequestSchema = skillInstallationMutationSchema satisfies z.ZodType<Wire<RequestPayload<'skill.installationInstall'>>>
+export const skillInstallationInstallValueSchema = managedInstallationEntrySchema satisfies z.ZodType<Wire<ResponseValue<'skill.installationInstall'>>>
+export const skillInstallationUpdateRequestSchema = skillInstallationMutationSchema.extend({ fromVersion: z.string().min(1) }) satisfies z.ZodType<Wire<RequestPayload<'skill.installationUpdate'>>>
+export const skillInstallationUpdateValueSchema = managedInstallationEntrySchema satisfies z.ZodType<Wire<ResponseValue<'skill.installationUpdate'>>>
+export const skillInstallationSetEnabledRequestSchema = skillInstallationMutationSchema.extend({ enabled: z.boolean() }) satisfies z.ZodType<Wire<RequestPayload<'skill.installationSetEnabled'>>>
+export const skillInstallationSetEnabledValueSchema = managedInstallationEntrySchema satisfies z.ZodType<Wire<ResponseValue<'skill.installationSetEnabled'>>>
+export const skillInstallationUninstallRequestSchema = skillInstallationMutationSchema satisfies z.ZodType<Wire<RequestPayload<'skill.installationUninstall'>>>
+export const skillInstallationUninstallValueSchema = z.object({ removed: z.boolean() }) satisfies z.ZodType<Wire<ResponseValue<'skill.installationUninstall'>>>

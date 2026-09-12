@@ -22,6 +22,8 @@ import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-se
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
+import { registryInstanceId as managedRegistryInstanceId } from '@deepseek-ai/dsh-skill-installation'
+import type { CommunitySkillIdentity, ManagedInstallationService, ManagedSkillInstallReceipt } from '@deepseek-ai/dsh-skill-installation'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
@@ -40,8 +42,12 @@ import type {
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
+  WorkspaceId, WorkspaceView, CommunitySkillIdentityPayload, ManagedSkillInstallationEntry,
 } from './api/index.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { managedInstallation?: ManagedInstallationService }
+}
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   flushLiveSessionLog,
@@ -111,6 +117,27 @@ import {
   inspectApiRemoteSession,
 } from '@deepseek-ai/dsh-api-remotes'
 import { canOpenNativePath, openNativePath, openNativeTextFile } from './native-path-opener.ts'
+
+function managedIdentity(payload: CommunitySkillIdentityPayload): CommunitySkillIdentity {
+  return {
+    registryInstanceId: managedRegistryInstanceId(payload.registryInstanceId),
+    namespace: payload.namespace,
+    slug: payload.slug,
+  }
+}
+
+function managedInstallationView(receipt: ManagedSkillInstallReceipt): ManagedSkillInstallationEntry {
+  return {
+    registryInstanceId: String(receipt.identity.registryInstanceId),
+    namespace: receipt.identity.namespace,
+    slug: receipt.identity.slug,
+    version: receipt.version,
+    canonicalName: receipt.canonicalName,
+    enabled: receipt.enabled,
+    installedAt: receipt.installedAt,
+    fingerprint: receipt.fingerprint,
+  }
+}
 
 /** Page size when history is called without maxMessages. */
 const DEFAULT_MAX_MESSAGES = 50
@@ -3359,6 +3386,79 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             message: 'Community Skill detail is temporarily unavailable',
             details: {},
           })
+        }
+      },
+      async installationList(request) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const items = (await service.listReceipts()).map(managedInstallationView)
+          return ok(request, { items })
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: `Managed Skill installation listing failed: ${String(error)}`, details: {} })
+        }
+      },
+      async installationInstall(request, signal) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = await service.install({
+            identity: managedIdentity(request.payload),
+            version: request.payload.version,
+            idempotencyKey: request.payload.idempotencyKey,
+          }, signal)
+          return ok(request, managedInstallationView(result.receipt))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
+        }
+      },
+      async installationUpdate(request, signal) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = await service.update({
+            identity: managedIdentity(request.payload),
+            fromVersion: request.payload.fromVersion,
+            toVersion: request.payload.version,
+            idempotencyKey: request.payload.idempotencyKey,
+          }, signal)
+          return ok(request, managedInstallationView(result.receipt))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
+        }
+      },
+      async installationSetEnabled(request) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = request.payload.enabled
+            ? await service.enable({
+              identity: managedIdentity(request.payload),
+              version: request.payload.version,
+              idempotencyKey: request.payload.idempotencyKey,
+            })
+            : await service.disable({
+              identity: managedIdentity(request.payload),
+              version: request.payload.version,
+              idempotencyKey: request.payload.idempotencyKey,
+            })
+          return ok(request, managedInstallationView(result.receipt))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
+        }
+      },
+      async installationUninstall(request) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = await service.uninstall({
+            identity: managedIdentity(request.payload),
+            version: request.payload.version,
+            idempotencyKey: request.payload.idempotencyKey,
+          })
+          return ok(request, { removed: result.removed })
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
         }
       },
     },

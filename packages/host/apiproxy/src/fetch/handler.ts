@@ -45,6 +45,9 @@ import {
 } from '../api/workspace.schema.ts'
 import {
   skillCommunityGetRequestSchema, skillCommunityListRequestSchema, skillListRequestSchema,
+  skillInstallationListRequestSchema, skillInstallationInstallRequestSchema,
+  skillInstallationUpdateRequestSchema, skillInstallationSetEnabledRequestSchema,
+  skillInstallationUninstallRequestSchema,
 } from '../api/skills.schema.ts'
 import {
   agentPresetCopyRequestSchema, agentPresetListRequestSchema, agentPresetOpenDocumentRequestSchema,
@@ -121,6 +124,11 @@ const UNARY_ROUTES: UnaryRoutes = {
   'skill.list': { schema: skillListRequestSchema, invoke: (api, r) => api.skills.list(r) },
   'skill.communityList': { schema: skillCommunityListRequestSchema, invoke: (api, r, signal) => api.skills.communityList(r, signal) },
   'skill.communityGet': { schema: skillCommunityGetRequestSchema, invoke: (api, r, signal) => api.skills.communityGet(r, signal) },
+  'skill.installationList': { schema: skillInstallationListRequestSchema, invoke: (api, r, signal) => api.skills.installationList?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
+  'skill.installationInstall': { schema: skillInstallationInstallRequestSchema, invoke: (api, r, signal) => api.skills.installationInstall?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
+  'skill.installationUpdate': { schema: skillInstallationUpdateRequestSchema, invoke: (api, r, signal) => api.skills.installationUpdate?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
+  'skill.installationSetEnabled': { schema: skillInstallationSetEnabledRequestSchema, invoke: (api, r, signal) => api.skills.installationSetEnabled?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
+  'skill.installationUninstall': { schema: skillInstallationUninstallRequestSchema, invoke: (api, r, signal) => api.skills.installationUninstall?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
   'agentPreset.list': { schema: agentPresetListRequestSchema, invoke: (api, r) => api.agentPresets.list(r) },
   'agentPreset.select': { schema: agentPresetSelectRequestSchema, invoke: (api, r) => api.agentPresets.select(r) },
   'agentPreset.read': { schema: agentPresetReadRequestSchema, invoke: (api, r) => api.agentPresets.read(r) },

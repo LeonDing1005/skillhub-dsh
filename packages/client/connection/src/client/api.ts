@@ -12,6 +12,7 @@ export type {
   ResponseValue, WorkspaceApi, WorkspaceId, WorkspaceView,
   CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillFileEntry, CommunitySkillIdentityPayload,
   CommunitySkillLabelEntry, CommunitySkillListPayload, CommunitySkillListValue, CommunitySkillVersionEntry,
+  ManagedSkillInstallationEntry, ManagedSkillInstallationListValue, ManagedSkillInstallationMutationPayload,
   SkillsApi, SkillEntry,
   ModelCatalogFailure, ModelCatalogModel, ModelProviderGroup, ModelReasoning,
   ModelReasoningEffort, ModelSelection, QueueAction, QueuedInboxItem, SessionModels,

@@ -53,6 +53,11 @@ export interface RpcMethodMap {
   'skill.list': SkillsApi['list']
   'skill.communityList': SkillsApi['communityList']
   'skill.communityGet': SkillsApi['communityGet']
+  'skill.installationList': NonNullable<SkillsApi['installationList']>
+  'skill.installationInstall': NonNullable<SkillsApi['installationInstall']>
+  'skill.installationUpdate': NonNullable<SkillsApi['installationUpdate']>
+  'skill.installationSetEnabled': NonNullable<SkillsApi['installationSetEnabled']>
+  'skill.installationUninstall': NonNullable<SkillsApi['installationUninstall']>
   'agentPreset.list': AgentPresetsApi['list']
   'agentPreset.select': AgentPresetsApi['select']
   'agentPreset.read': AgentPresetsApi['read']

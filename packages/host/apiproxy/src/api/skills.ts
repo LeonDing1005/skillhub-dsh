@@ -101,6 +101,16 @@ export interface CommunitySkillDetailValue extends CommunitySkillIdentityPayload
   readonly installCommand: string
 }
 
+/** Safe projection of one managed installation; storage paths and source URLs stay Host-only. */
+export interface ManagedSkillInstallationEntry extends CommunitySkillIdentityPayload {
+  readonly canonicalName: string
+  readonly enabled: boolean
+  readonly installedAt: string
+  readonly fingerprint: string
+}
+export interface ManagedSkillInstallationListValue { readonly items: readonly ManagedSkillInstallationEntry[] }
+export interface ManagedSkillInstallationMutationPayload extends CommunitySkillIdentityPayload { readonly idempotencyKey: string }
+
 /**
  * Skill-domain unary methods (the map key skill.* of RpcMethodMap). Listing
  * is the domain's only RPC: invocation itself is a plain `session.prompt`
@@ -115,4 +125,14 @@ export interface SkillsApi {
   communityList(request: RpcRequest<CommunitySkillListPayload>, signal?: AbortSignal): Promise<RpcResponse<CommunitySkillListValue>>
   /** Loads one exact Community Skill release from the configured Registry Instance. */
   communityGet(request: RpcRequest<CommunitySkillIdentityPayload>, signal?: AbortSignal): Promise<RpcResponse<CommunitySkillDetailValue>>
+  installationList?(request: RpcRequest<Record<string, never>>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationListValue>>
+  installationInstall?(request: RpcRequest<ManagedSkillInstallationMutationPayload>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationEntry>>
+  installationUpdate?(request: RpcRequest<ManagedSkillInstallationMutationPayload & { fromVersion: string }>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationEntry>>
+  installationSetEnabled?(request: RpcRequest<ManagedSkillInstallationMutationPayload & { enabled: boolean }>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationEntry>>
+  installationUninstall?(request: RpcRequest<ManagedSkillInstallationMutationPayload>, signal?: AbortSignal):
+  Promise<RpcResponse<{ removed: boolean }>>
 }

@@ -954,11 +954,12 @@ describe('ManagedInstallationService', () => {
     await mkdir(join(root, 'v1', 'operations'), { recursive: true })
     await writeFile(operationPath, '{"formatVersion":1,"operation":"install","status":"completed","targetKey":"not-a-key","completedAt":"2026-08-26T01:00:00.000Z"}\n')
 
-    await expect(service(root, []).service.recover()).rejects.toMatchObject({
-      name: 'ManagedSkillAdmissionError',
-      code: 'OPERATION_RECORD_CORRUPT',
-      message: expect.not.stringContaining(root),
-    })
+    const rejection = await service(root, []).service.recover().then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(rejection).toMatchObject({ name: 'ManagedSkillAdmissionError', code: 'OPERATION_RECORD_CORRUPT' })
+    expect(String(rejection)).not.toContain(root)
   })
 
   it('disables and enables an installed package with idempotent replay', async () => {
