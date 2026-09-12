@@ -195,10 +195,18 @@ jobs:
           esac
           addon_dir="$(realpath packages/subprocess/subprocess-local/node_modules/node-pty)"
           addon="$addon_dir/build/Release/pty.node"
+          addon_api_dir="$(dirname "$(cd "$addon_dir" && node -p "require.resolve('node-addon-api/package.json')")")"
+          node_gyp_dir="$(npm root -g)/npm/node_modules/node-gyp"
           [ -f "$addon_dir/build/Makefile" ] || {
             echo "::error::node-pty install did not generate $addon_dir/build/Makefile"
             exit 1
           }
+          # node-gyp emits the node-addon-api dependency make fragments only when
+          # that package is the configured project. pnpm keeps this dependency in
+          # its own virtual-store directory, so generate those fragments before
+          # the manylinux container runs GNU make over node-pty's Makefile.
+          (cd "$addon_api_dir" && python "$node_gyp_dir/gyp/gyp_main.py" \
+            -f make --depth=. --generator-output=. node_addon_api.gyp)
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -v "$PWD:$PWD" \
