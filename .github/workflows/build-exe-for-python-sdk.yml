@@ -197,6 +197,9 @@ jobs:
           addon="$addon_dir/build/Release/pty.node"
           addon_api_dir="$(dirname "$(cd "$addon_dir" && node -p "require.resolve('node-addon-api/package.json')")")"
           node_gyp_dir="$(npm root -g)/npm/node_modules/node-gyp"
+          node_gyp_cache="$HOME/.cache/node-gyp"
+          node_version="$(node -p "process.versions.node")"
+          node "$node_gyp_dir/bin/node-gyp.js" install --ensure --devdir="$node_gyp_cache" --target="$node_version"
           [ -f "$addon_dir/build/Makefile" ] || {
             echo "::error::node-pty install did not generate $addon_dir/build/Makefile"
             exit 1
@@ -215,7 +218,7 @@ jobs:
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -v "$PWD:$PWD" \
-            -v "$HOME/.cache/node-gyp:$HOME/.cache/node-gyp:ro" \
+            -v "$node_gyp_cache:$node_gyp_cache:ro" \
             -v "$HOME/setup-pnpm:$HOME/setup-pnpm:ro" \
             -w "$addon_dir" \
             "$image" \
