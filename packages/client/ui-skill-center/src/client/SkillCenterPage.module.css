@@ -211,6 +211,8 @@
 .markdownPreview code { max-width: 100%; overflow-x: auto; }
 .dialogFooter { display: flex; flex: none; justify-content: flex-end; gap: 8px; padding: 12px 22px 16px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .downloadFailure { align-self: center; margin-right: auto; color: var(--dsw-alias-state-error-primary); font-size: 12px; }
+.confirmation { display: inline-flex; align-items: center; gap: 8px; }
+.confirmation small { color: var(--dsw-alias-label-secondary); font-size: 11px; }
 .dialogFooter .primaryAction { display: inline-flex; align-items: center; gap: 7px; border-color: var(--dsw-alias-brand-primary); background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary-inverted); }
 .dialogFooter button:disabled { cursor: wait; opacity: 0.65; }
 .cardFooter button { min-height: 30px; padding: 0 9px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; cursor: pointer; }

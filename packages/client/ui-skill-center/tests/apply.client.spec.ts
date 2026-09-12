@@ -26,18 +26,25 @@ async function bench() {
     },
   } as never, () => null)
   const locale = new LocaleRuntime(ctx)
-  const layout = { openPage: vi.fn() }
+  const layout = { openPage: vi.fn(), showConversation: vi.fn() }
+  const sessions = {
+    list: { getSnapshot: () => ({ current: undefined }) },
+    scope: vi.fn(),
+    create: vi.fn(),
+    open: vi.fn(),
+  }
   const communityList = vi.fn().mockResolvedValue({ result: { ok: true, value: emptyPage } })
   const communityGet = vi.fn().mockResolvedValue({ result: { ok: true, value: { canonicalName: 'weather' } } })
   ctx.provide('locale', locale)
   ctx.provide('layout', layout as never)
+  ctx.provide('sessions', sessions as never)
   ctx.provide('connection', { api: { skills: { communityList, communityGet } } } as never)
-  return { ctx, slots, locale, layout, communityList, communityGet }
+  return { ctx, slots, locale, layout, sessions, communityList, communityGet }
 }
 
 describe('ui-skill-center apply', () => {
   it('declares the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'locale', 'connection'])
+    expect(inject).toEqual(['slots', 'layout', 'locale', 'connection', 'sessions'])
   })
 
   it('keeps the node half inert because behavior runs in the browser graph', () => {
@@ -95,6 +102,36 @@ describe('ui-skill-center apply', () => {
     expect(view.container.innerHTML).toBe('')
     view.rerender(createElement(PageRoute, { pageId: 'skill-center', load, t }))
     expect(await screen.findByText('No Community Skills yet')).toBeTruthy()
+  })
+
+  it('uses the current scoped conversation and creates a blank session when none is selected', async () => {
+    const b = await bench()
+    const insertSkillToken = vi.fn()
+    const scope = { get: vi.fn().mockReturnValue({ insertSkillToken }) }
+    b.sessions.list.getSnapshot = () => ({
+      current: 'session-1', ids: ['session-1'], byId: {
+        'session-1': { id: 'session-1', origin: undefined, blank: false, updatedAt: 2 },
+      },
+    }) as never
+    b.sessions.scope.mockReturnValue(scope)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const entry = b.slots.entries('shell.page')[0]!
+    const props = (entry.inject as () => { useInConversation: (name: string) => Promise<void> })()
+    await props.useInConversation('weather-toolkit')
+    expect(scope.get).toHaveBeenCalledWith('conversation')
+    expect(insertSkillToken).toHaveBeenCalledWith('weather-toolkit')
+    expect(b.layout.showConversation).toHaveBeenCalledTimes(1)
+
+    b.sessions.scope.mockReturnValue(undefined)
+    await expect(props.useInConversation('weather-toolkit')).rejects.toThrow('session "session-1" is unavailable')
+
+    b.sessions.list.getSnapshot = () => ({ current: undefined, ids: [], byId: {} }) as never
+    b.sessions.create = vi.fn().mockResolvedValue('created-session')
+    b.sessions.open = vi.fn()
+    b.sessions.scope.mockReturnValue(scope)
+    await props.useInConversation('weather-toolkit')
+    expect(b.sessions.create).toHaveBeenCalledWith()
+    expect(b.sessions.open).toHaveBeenCalledWith('created-session')
   })
 
   it('surfaces a failed Community API result to the page loader', async () => {

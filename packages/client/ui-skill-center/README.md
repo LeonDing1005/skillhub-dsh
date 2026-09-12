@@ -14,6 +14,8 @@ The detail modal traps focus, closes with Escape, Cancel, or the mask, and resto
 
 The page calls `skill.communityList`, `skill.communityGet`, and the managed installation lifecycle methods through the standard connection service. Exact bytes use the Host-only `/api/skill.download` route. The browser receives no SkillHub credentials, base URL, upstream response types, artifact URL, or Host path. Installation actions send only the safe release identity and a generated idempotency key.
 
+Installing and updating require explicit confirmation. An enabled managed installation can be used from its detail dialog: the route resolves the current Session, inserts the canonical `/name ` token through `conversation.insertSkillToken`, restores the conversation page, and leaves composer focus handling to the conversation input seam.
+
 ## Model Experience
 
 None, as this browser discovery surface registers nothing model-facing.

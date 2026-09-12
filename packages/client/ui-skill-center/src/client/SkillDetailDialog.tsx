@@ -21,6 +21,8 @@ export interface SkillDetailDialogProps {
   readonly update?: (identity: CommunitySkillIdentityPayload, fromVersion: string) => Promise<ManagedSkillInstallationEntry>
   readonly setEnabled?: (identity: CommunitySkillIdentityPayload, enabled: boolean) => Promise<ManagedSkillInstallationEntry>
   readonly uninstall?: (identity: CommunitySkillIdentityPayload) => Promise<{ removed: boolean }>
+  /** Return to the current conversation and insert the canonical slash token. */
+  readonly useInConversation?: (name: string) => Promise<void> | void
   readonly onChanged?: () => void
   readonly onClose: () => void
   readonly returnFocus: HTMLElement | null
@@ -38,7 +40,8 @@ type DetailState =
  * @returns a body portal containing the modal dialog.
  */
 export function SkillDetailDialog({
-  skill, load, download, installation: initialInstallation, install, update, setEnabled, uninstall, onChanged, onClose, returnFocus, t,
+  skill, load, download, installation: initialInstallation, install, update, setEnabled,
+  uninstall, useInConversation, onChanged, onClose, returnFocus, t,
 }: SkillDetailDialogProps) {
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<DetailState>({ status: 'loading' })
@@ -49,6 +52,7 @@ export function SkillDetailDialog({
   const [installation, setInstallation] = useState(initialInstallation)
   const [action, setAction] = useState<'idle' | 'installing' | 'updating' | 'toggling' | 'uninstalling'>('idle')
   const [actionFailed, setActionFailed] = useState(false)
+  const [confirmation, setConfirmation] = useState<'install' | 'update' | undefined>()
   const dialog = useRef<HTMLDivElement>(null)
   const close = useRef<HTMLButtonElement>(null)
   const identity = useMemo(() => identityFor(skill), [
@@ -140,8 +144,10 @@ export function SkillDetailDialog({
 
   const installRelease = useCallback(() => {
     if (install === undefined) return
+    if (confirmation !== 'install') { setConfirmation('install'); return }
+    setConfirmation(undefined)
     void mutateInstallation(() => install(identity), 'installing')
-  }, [identity, install, mutateInstallation])
+  }, [confirmation, identity, install, mutateInstallation])
 
   const toggleInstallation = useCallback(() => {
     if (setEnabled === undefined || installation === undefined) return
@@ -228,20 +234,39 @@ export function SkillDetailDialog({
               {downloadFailed && <span className={css.downloadFailure} role="alert">{t('detail.download.failure')}</span>}
               {actionFailed && <span className={css.downloadFailure} role="alert">{t('mine.action.failure')}</span>}
               <button type="button" onClick={onClose}>{t('detail.cancel')}</button>
-              {installation === undefined && install !== undefined && (
+              {installation === undefined && install !== undefined && confirmation !== 'install' && (
                 <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={installRelease}>
                   {action === 'installing' ? t('mine.installing') : t('mine.install')}
                 </button>
+              )}
+              {installation === undefined && install !== undefined && confirmation === 'install' && (
+                <span className={css.confirmation} role="group" aria-label={t('mine.confirm.install')}>
+                  <span>{t('mine.confirm.install')}</span>
+                  <small>{state.value.publisher} · {state.value.registryInstanceId} · v{skill.version} · {state.value.files.length > 1 ? t('mine.confirm.resources') : t('mine.confirm.noResources')}</small>
+                  <button type="button" onClick={installRelease}>{t('mine.confirm')}</button>
+                  <button type="button" onClick={() => { setConfirmation(undefined) }}>{t('detail.cancel')}</button>
+                </span>
               )}
               {installation !== undefined && setEnabled !== undefined && (
                 <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={toggleInstallation}>
                   {installation.enabled ? t('mine.disable') : t('mine.enable')}
                 </button>
               )}
-              {canUpdate && (
-                <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={() => { void mutateInstallation(() => update(identity, installation.version), 'updating') }}>
+              {canUpdate && confirmation !== 'update' && (
+                <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={() => { setConfirmation('update') }}>
                   {action === 'updating' ? t('mine.updating') : `${t('mine.update')} v${newestVersion}`}
                 </button>
+              )}
+              {canUpdate && confirmation === 'update' && (
+                <span className={css.confirmation} role="group" aria-label={t('mine.confirm.update')}>
+                  <span>{t('mine.confirm.update')}</span>
+                  <small>{state.value.publisher} · {state.value.registryInstanceId} · v{newestVersion}</small>
+                  <button type="button" onClick={() => { setConfirmation(undefined); void mutateInstallation(() => update(identity, installation.version), 'updating') }}>{t('mine.confirm')}</button>
+                  <button type="button" onClick={() => { setConfirmation(undefined) }}>{t('detail.cancel')}</button>
+                </span>
+              )}
+              {installation !== undefined && installation.enabled && useInConversation !== undefined && (
+                <button type="button" onClick={() => { void useInConversation(installation.canonicalName) }}>{t('mine.use')}</button>
               )}
               {installation !== undefined && uninstall !== undefined && (
                 <button type="button" disabled={action !== 'idle'} onClick={uninstallRelease}>

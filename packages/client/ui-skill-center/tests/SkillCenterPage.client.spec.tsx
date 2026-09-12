@@ -358,8 +358,31 @@ describe('SkillCenterPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View details for Weather' }))
     await screen.findByRole('dialog', { name: 'weather-toolkit' })
     fireEvent.click(screen.getByRole('button', { name: 'Install to My Skills' }))
+    expect(install).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     await waitFor(() => { expect(install).toHaveBeenCalledWith({
       registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
     }) })
+  })
+
+  it('returns to the conversation and inserts an enabled managed skill token', async () => {
+    const useInConversation = vi.fn()
+    render(
+      <SkillCenterPage
+        load={() => Promise.resolve(page)}
+        loadDetail={() => Promise.resolve(detail)}
+        download={() => Promise.resolve()}
+        loadInstallations={() => Promise.resolve({ items: [managed] })}
+        setEnabled={() => Promise.resolve(managed)}
+        uninstall={() => Promise.resolve({ removed: true })}
+        useInConversation={useInConversation}
+        t={t}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Weather' })
+    fireEvent.click(screen.getByRole('button', { name: 'View details for Weather' }))
+    await screen.findByRole('dialog', { name: 'weather-toolkit' })
+    fireEvent.click(screen.getByRole('button', { name: 'Use in conversation' }))
+    expect(useInConversation).toHaveBeenCalledWith('weather-toolkit')
   })
 })

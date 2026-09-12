@@ -27,6 +27,7 @@ export interface SkillCenterPageProps {
   readonly update?: (identity: CommunitySkillIdentityPayload, fromVersion: string) => Promise<ManagedSkillInstallationEntry>
   readonly setEnabled?: (identity: CommunitySkillIdentityPayload, enabled: boolean) => Promise<ManagedSkillInstallationEntry>
   readonly uninstall?: (identity: CommunitySkillIdentityPayload) => Promise<{ removed: boolean }>
+  readonly useInConversation?: (name: string) => Promise<void> | void
   readonly t: (key: SkillCenterKey) => string
 }
 
@@ -47,7 +48,7 @@ type InstallationState =
 
 /** Render Community Skills discovery and the managed Personal Skill Inventory. */
 export function SkillCenterPage({
-  load, loadDetail, download, loadInstallations, install, update, setEnabled, uninstall, t,
+  load, loadDetail, download, loadInstallations, install, update, setEnabled, uninstall, useInConversation, t,
 }: SkillCenterPageProps) {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
@@ -296,6 +297,7 @@ export function SkillCenterPage({
               ...(update === undefined ? {} : { update }),
               ...(setEnabled === undefined ? {} : { setEnabled }),
               ...(uninstall === undefined ? {} : { uninstall }),
+              ...(useInConversation === undefined ? {} : { useInConversation: async (name: string) => { await useInConversation(name) } }),
             }
           })()}
           onChanged={refreshInstallations}

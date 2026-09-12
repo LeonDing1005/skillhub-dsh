@@ -14,6 +14,8 @@
 
 页面通过标准 connection 服务调用 `skill.communityList`、`skill.communityGet` 和托管安装生命周期方法。精确字节使用 Host-only 的 `/api/skill.download` 路由。浏览器不会接收 SkillHub 凭据、基础 URL、上游响应类型、制品 URL 或 Host 路径。安装操作只发送安全的发布版本 identity 和生成的幂等键。
 
+安装和更新需要显式确认。已启用的托管安装可以从详情对话框进入当前会话使用：路由解析当前 Session，经 `conversation.insertSkillToken` 插入规范的 `/name ` token，恢复会话页面，并把 composer 聚焦交给会话输入 seam 处理。
+
 ## 模型体验
 
 无，因为该浏览器发现界面不注册任何面向模型的内容。
