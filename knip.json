@@ -262,6 +262,17 @@
         "tests/**/*.ts"
       ]
     },
+    "packages/skill/skill-installation": {
+      "entry": [
+        "tests/**/*.spec.ts",
+        "tests/fixtures/managed-provider-bin.ts",
+        "tests/fixtures/managed-provider-plugin.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ]
+    },
     "packages/core/tools": {
       "entry": [
         "tests/**/*.spec.ts"
