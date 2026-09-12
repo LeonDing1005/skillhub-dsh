@@ -10,7 +10,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { chmod, lstat, mkdir, open, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, posix, resolve } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { parseSkillDocument, type ParsedSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
@@ -1194,13 +1194,39 @@ async function readReceipt(packagePath: string): Promise<ManagedSkillReceipt> {
     const receiptPath = join(packagePath, RECEIPT_FILE)
     await assertDurableEntry(receiptPath, 'file')
     const raw: unknown = JSON.parse(await readFile(receiptPath, 'utf8'))
-    const receipt = validateReceipt(raw, packagePath)
+    const receipt = validateReceipt(await normalizeReceiptLocation(raw, packagePath), packagePath)
     await verifyDurableContent(receipt)
     return receipt
   } catch (error) {
     if (error instanceof ManagedSkillAdmissionError) throw error
     fail(`Managed package receipt at "${packagePath}" is unreadable.`, 'STORE_CORRUPT', error)
   }
+}
+
+/**
+ * Normalize a persisted managed location to the current Windows path spelling.
+ * Windows can hand the writer and the restarted reader different spellings for
+ * the same temporary directory (for example, a short 8.3 component). The
+ * package path remains authoritative; the persisted location is accepted only
+ * when both spellings resolve to that exact directory.
+ * @param value - decoded receipt value before structural validation.
+ * @param packagePath - current store-owned package directory.
+ * @returns the original value, or a copy with the canonical managed location.
+ */
+async function normalizeReceiptLocation(value: unknown, packagePath: string): Promise<unknown> {
+  /* v8 ignore next -- Windows-only path spelling differs from POSIX text. */
+  if (process.platform !== 'win32' || !isRecord(value) || typeof value.managedLocation !== 'string') return value
+  const expected = join(packagePath, CONTENT_DIRECTORY)
+  try {
+    const [actualPath, expectedPath] = await Promise.all([
+      realpath(value.managedLocation),
+      realpath(expected),
+    ])
+    if (actualPath.toLowerCase() === expectedPath.toLowerCase()) return { ...value, managedLocation: expected }
+  } catch {
+    // Preserve the original value so structural validation reports corruption.
+  }
+  return value
 }
 
 async function verifyDurableContent(receipt: ManagedSkillReceipt): Promise<void> {
