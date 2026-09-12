@@ -13,9 +13,16 @@ import type { Stats } from 'node:fs'
 import { chmod, lstat, mkdir, open, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, posix, resolve } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { parseSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
+import { parseSkillDocument, type ParsedSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
 import type { Context } from '@deepseek-ai/cordis'
-import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProvider, SkillProviderControl } from '@deepseek-ai/dsh-skill'
+import type {
+  SkillCandidate,
+  SkillDefinition,
+  SkillLookupOptions,
+  SkillProvider,
+  SkillProviderControl,
+  SkillProviderObservation,
+} from '@deepseek-ai/dsh-skill'
 import { extractSkillArchive } from './archive.ts'
 import { fail, ManagedSkillAdmissionError } from './error.ts'
 import { computeSkillHubFingerprint } from './fingerprint.ts'
@@ -629,8 +636,20 @@ export class ManagedInstallationService {
   }
 
   private async ensureReady(): Promise<void> {
-    this.ready ??= this.recover().then(() => {})
-    await this.ready
+    const current = this.ready
+    if (current !== undefined) {
+      await current
+      return
+    }
+    const recovery = this.recover().then(
+      () => {},
+      (error: unknown) => {
+        if (this.ready === recovery) this.ready = undefined
+        throw error
+      },
+    )
+    this.ready = recovery
+    await recovery
   }
 
   private notifyChange(): void {
@@ -642,6 +661,7 @@ export class ManagedInstallationService {
 
 interface ManagedSkillLocator {
   readonly receipt: ManagedSkillReceipt
+  readonly document: ParsedSkillDocument
 }
 
 /** Provider exposing enabled, verified managed packages through `ctx.skills`. */
@@ -651,6 +671,7 @@ export class ManagedSkillProvider implements SkillProvider {
   constructor(
     private readonly service: ManagedInstallationService,
     control?: SkillProviderControl,
+    private readonly reportFailure: (error: unknown) => void = () => {},
   ) {
     if (control !== undefined) {
       const unsubscribe = service.onChange(control.invalidate)
@@ -658,27 +679,71 @@ export class ManagedSkillProvider implements SkillProvider {
     }
   }
 
-  async list(_options: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
-    const receipts = await this.service.listReceipts()
-    return receipts.filter(receipt => receipt.enabled).map(receipt => ({
-      name: receipt.canonicalName,
-      description: `Managed Community Skill ${receipt.canonicalName}`,
-      invocation: { modelInvocable: true, userInvocable: true },
-      source: 'custom',
-      provider: this.name,
-      rank: MANAGED_SKILL_RANK,
-      locator: { receipt },
-    }))
+  /**
+   * Discover enabled managed packages after startup reconciliation.
+   * @param options - lookup options whose signal cancels receipt and document reads.
+   * @returns candidates, or an incomplete observation when durable discovery fails after startup.
+   * @throws when cancellation is requested; other provider-owned read failures are represented by `complete: false`.
+   */
+  async list(options: SkillLookupOptions): Promise<readonly SkillCandidate[] | SkillProviderObservation> {
+    let receipts: readonly ManagedSkillReceipt[]
+    try {
+      receipts = await this.service.listReceipts()
+    } catch (error) {
+      options.signal?.throwIfAborted()
+      this.reportFailure(error)
+      return { candidates: [], complete: false }
+    }
+    const candidates: SkillCandidate[] = []
+    let complete = true
+    for (const receipt of receipts) {
+      options.signal?.throwIfAborted()
+      if (!receipt.enabled) continue
+      try {
+        const document = await readManagedSkillDocument(receipt, options.signal)
+        if (document === undefined) {
+          throw new Error(`managed skill "${receipt.canonicalName}" is missing its committed SKILL.md`)
+        }
+        if (document.name !== receipt.canonicalName) {
+          throw new Error(`managed skill "${receipt.canonicalName}" does not match its committed SKILL.md name`)
+        }
+        candidates.push({
+          name: document.name,
+          description: document.description,
+          ...document.whenToUse !== undefined ? { whenToUse: document.whenToUse } : {},
+          invocation: document.invocation,
+          source: 'custom',
+          provider: this.name,
+          rank: MANAGED_SKILL_RANK,
+          locator: { receipt, document },
+          resourceBase: managedResourceBase(),
+          ...document.metadata !== undefined ? { metadata: document.metadata } : {},
+        })
+      } catch (error) {
+        options.signal?.throwIfAborted()
+        this.reportFailure(error)
+        complete = false
+      }
+    }
+    return complete ? candidates : { candidates, complete }
   }
 
-  async get(candidate: SkillCandidate, _options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
+  /**
+   * Load a listed managed package only while its verified receipt remains enabled.
+   * @param candidate - candidate previously returned by {@link list}.
+   * @param options - lookup options whose signal cancels the load.
+   * @returns the parsed definition, or `undefined` when the receipt was disabled or removed.
+   */
+  async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
     const locator = candidate.locator as ManagedSkillLocator
-    const raw = await readFile(join(locator.receipt.managedLocation, 'SKILL.md'), 'utf8').catch((error: unknown) => {
-      if (isCode(error, 'ENOENT')) return undefined
-      throw error
-    })
-    if (raw === undefined) return undefined
-    const parsed = parseSkillDocument(raw)
+    options.signal?.throwIfAborted()
+    const current = (await this.service.listReceipts()).find(receipt =>
+      receipt.enabled
+      && receipt.version === locator.receipt.version
+      && sameRemoteIdentity(receipt.identity, locator.receipt.identity),
+    )
+    if (current === undefined) return undefined
+    const parsed = locator.document
     if (parsed.name !== candidate.name) return undefined
     return {
       name: parsed.name,
@@ -687,16 +752,38 @@ export class ManagedSkillProvider implements SkillProvider {
       invocation: parsed.invocation,
       source: 'custom',
       provider: this.name,
-      resourceBase: { kind: 'opaque', description: 'Resources are managed by the local Skill Center.' },
+      resourceBase: managedResourceBase(),
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
       content: parsed.content,
     }
   }
 }
 
+function managedResourceBase(): { readonly kind: 'opaque'; readonly description: string } {
+  return { kind: 'opaque', description: 'Resources are managed by the local Skill Center.' }
+}
+
+async function readManagedSkillDocument(
+  receipt: ManagedSkillReceipt,
+  signal?: AbortSignal,
+): Promise<ParsedSkillDocument | undefined> {
+  try {
+    const raw = await readFile(join(receipt.managedLocation, 'SKILL.md'), { encoding: 'utf8', signal })
+    return parseSkillDocument(raw)
+  } catch (error) {
+    signal?.throwIfAborted()
+    if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) return undefined
+    throw error
+  }
+}
+
 /** Register a managed installation provider on an existing skill registry. */
 export const apply = (ctx: Context, service: ManagedInstallationService): (() => void) => {
-  return ctx.skills.registerProvider(control => new ManagedSkillProvider(service, control))
+  return ctx.skills.registerProvider(control => new ManagedSkillProvider(
+    service,
+    control,
+    error => ctx.logger.warn(`managed skill provider discovery incomplete: ${String(error)}`),
+  ))
 }
 
 function normalizeRelease(release: ManagedSkillRelease): NormalizedRelease {

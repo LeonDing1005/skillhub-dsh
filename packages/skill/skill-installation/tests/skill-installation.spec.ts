@@ -3,7 +3,7 @@ import { chmodSync } from 'node:fs'
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Zip, ZipPassThrough } from 'fflate'
 import {
   computeSkillHubFingerprint,
@@ -930,6 +930,18 @@ describe('ManagedInstallationService', () => {
     await expect(service(root, [input]).service.install(installRequest())).resolves.toMatchObject({
       receipt: { canonicalName: 'weather' },
     })
+  })
+
+  it('retries startup reconciliation after a transient failure', async () => {
+    const root = await tempRoot('managed-install-recovery-retry')
+    const installing = service(root, []).service
+    const recovery = vi.spyOn(installing, 'recover')
+      .mockRejectedValueOnce(new Error('temporary recovery failure'))
+      .mockResolvedValueOnce([])
+
+    await expect(installing.listReceipts()).rejects.toThrow('temporary recovery failure')
+    await expect(installing.listReceipts()).resolves.toEqual([])
+    expect(recovery).toHaveBeenCalledTimes(2)
   })
 
   it('rejects a resolved release that does not match the exact request', async () => {

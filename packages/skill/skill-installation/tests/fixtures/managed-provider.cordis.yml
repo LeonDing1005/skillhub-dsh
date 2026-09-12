@@ -1,0 +1,5 @@
+- id: skills
+  name: '@deepseek-ai/dsh-skill'
+
+- id: managed-provider-fixture
+  name: './managed-provider-plugin.ts'
