@@ -35,7 +35,7 @@ describe('ManagedSkillProvider', () => {
     const provider = new ManagedSkillProvider(service)
     const listed = await provider.list({})
     expect(Array.isArray(listed)).toBe(true)
-    if (!Array.isArray(listed)) throw new Error('expected complete managed provider discovery')
+    if ('complete' in listed) throw new Error('expected complete managed provider discovery')
     const candidates = listed
     expect(candidates).toHaveLength(1)
     expect(candidates[0]).toMatchObject({
@@ -46,7 +46,7 @@ describe('ManagedSkillProvider', () => {
     })
     expect(candidates[0]).not.toHaveProperty('path')
     expect(candidates[0]).not.toHaveProperty('sourceServer')
-    const definition = await provider.get(candidates[0]!, {})
+    const definition = await provider.get(candidates[0], {})
     expect(definition).toMatchObject({
       name: 'managed-demo',
       description: 'Parsed managed demo',
@@ -70,8 +70,9 @@ describe('ManagedSkillProvider', () => {
     const provider = new ManagedSkillProvider(service)
     const listed = await provider.list({})
     expect(Array.isArray(listed)).toBe(true)
-    if (!Array.isArray(listed)) throw new Error('expected complete managed provider discovery')
-    const candidate = listed[0]!
+    if ('complete' in listed) throw new Error('expected complete managed provider discovery')
+    const candidate = listed[0]
+    if (candidate === undefined) throw new Error('expected a managed skill candidate')
 
     await expect(provider.get(candidate, {})).resolves.toBeUndefined()
   })

@@ -782,7 +782,7 @@ export const apply = (ctx: Context, service: ManagedInstallationService): (() =>
   return ctx.skills.registerProvider(control => new ManagedSkillProvider(
     service,
     control,
-    error => ctx.logger.warn(`managed skill provider discovery incomplete: ${String(error)}`),
+    (error) => { ctx.logger.warn(`managed skill provider discovery incomplete: ${String(error)}`) },
   ))
 }
 
