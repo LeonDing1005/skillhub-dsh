@@ -6,6 +6,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillIdentityPayload,
+  ManagedSkillInstallationEntry,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SkillCenterKey } from './locales.ts'
 import css from './SkillCenterPage.module.css'
@@ -15,6 +16,12 @@ export interface SkillDetailDialogProps {
   readonly skill: CommunitySkillEntry
   readonly load: (identity: CommunitySkillIdentityPayload, signal: AbortSignal) => Promise<CommunitySkillDetailValue>
   readonly download: (identity: CommunitySkillIdentityPayload) => Promise<void>
+  readonly installation?: ManagedSkillInstallationEntry
+  readonly install?: (identity: CommunitySkillIdentityPayload) => Promise<ManagedSkillInstallationEntry>
+  readonly update?: (identity: CommunitySkillIdentityPayload, fromVersion: string) => Promise<ManagedSkillInstallationEntry>
+  readonly setEnabled?: (identity: CommunitySkillIdentityPayload, enabled: boolean) => Promise<ManagedSkillInstallationEntry>
+  readonly uninstall?: (identity: CommunitySkillIdentityPayload) => Promise<{ removed: boolean }>
+  readonly onChanged?: () => void
   readonly onClose: () => void
   readonly returnFocus: HTMLElement | null
   readonly t: (key: SkillCenterKey) => string
@@ -30,13 +37,18 @@ type DetailState =
  * @param props - exact release loaders, dismissal state, and localized copy.
  * @returns a body portal containing the modal dialog.
  */
-export function SkillDetailDialog({ skill, load, download, onClose, returnFocus, t }: SkillDetailDialogProps) {
+export function SkillDetailDialog({
+  skill, load, download, installation: initialInstallation, install, update, setEnabled, uninstall, onChanged, onClose, returnFocus, t,
+}: SkillDetailDialogProps) {
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<DetailState>({ status: 'loading' })
   const [mode, setMode] = useState<'dsh' | 'local'>('dsh')
   const [copied, setCopied] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [downloadFailed, setDownloadFailed] = useState(false)
+  const [installation, setInstallation] = useState(initialInstallation)
+  const [action, setAction] = useState<'idle' | 'installing' | 'updating' | 'toggling' | 'uninstalling'>('idle')
+  const [actionFailed, setActionFailed] = useState(false)
   const dialog = useRef<HTMLDivElement>(null)
   const close = useRef<HTMLButtonElement>(null)
   const identity = useMemo(() => identityFor(skill), [
@@ -106,6 +118,49 @@ export function SkillDetailDialog({ skill, load, download, onClose, returnFocus,
     }
   }, [download, identity])
 
+  useEffect(() => { setInstallation(initialInstallation) }, [initialInstallation])
+
+  const mutateInstallation = useCallback(async (
+    operation: () => Promise<ManagedSkillInstallationEntry | { removed: boolean }>,
+    nextAction: typeof action,
+  ) => {
+    setAction(nextAction)
+    setActionFailed(false)
+    try {
+      const result = await operation()
+      if ('removed' in result) setInstallation(undefined)
+      else setInstallation(result)
+      onChanged?.()
+    } catch {
+      setActionFailed(true)
+    } finally {
+      setAction('idle')
+    }
+  }, [onChanged])
+
+  const installRelease = useCallback(() => {
+    if (install === undefined) return
+    void mutateInstallation(() => install(identity), 'installing')
+  }, [identity, install, mutateInstallation])
+
+  const toggleInstallation = useCallback(() => {
+    if (setEnabled === undefined || installation === undefined) return
+    void mutateInstallation(() => setEnabled(identity, !installation.enabled), 'toggling')
+  }, [identity, installation, mutateInstallation, setEnabled])
+
+  const uninstallRelease = useCallback(() => {
+    if (uninstall === undefined || installation === undefined) return
+    void mutateInstallation(() => uninstall(identity), 'uninstalling')
+  }, [identity, installation, mutateInstallation, uninstall])
+
+  const newestVersion = state.status === 'ready'
+    ? state.value.versions.map(item => item.version).sort(compareVersions).at(-1)
+    : undefined
+  const canUpdate = installation !== undefined
+    && update !== undefined
+    && newestVersion !== undefined
+    && compareVersions(newestVersion, installation.version) > 0
+
   return createPortal((
     <div className={css.dialogLayer} data-testid="skill-detail-layer">
       <div className={css.dialogMask} aria-hidden="true" onClick={onClose} />
@@ -171,8 +226,29 @@ export function SkillDetailDialog({ skill, load, download, onClose, returnFocus,
             </div>
             <footer className={css.dialogFooter}>
               {downloadFailed && <span className={css.downloadFailure} role="alert">{t('detail.download.failure')}</span>}
+              {actionFailed && <span className={css.downloadFailure} role="alert">{t('mine.action.failure')}</span>}
               <button type="button" onClick={onClose}>{t('detail.cancel')}</button>
-              <button type="button" className={css.primaryAction} disabled={downloading} onClick={() => { void downloadRelease() }}>
+              {installation === undefined && install !== undefined && (
+                <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={installRelease}>
+                  {action === 'installing' ? t('mine.installing') : t('mine.install')}
+                </button>
+              )}
+              {installation !== undefined && setEnabled !== undefined && (
+                <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={toggleInstallation}>
+                  {installation.enabled ? t('mine.disable') : t('mine.enable')}
+                </button>
+              )}
+              {canUpdate && (
+                <button type="button" className={css.primaryAction} disabled={action !== 'idle'} onClick={() => { void mutateInstallation(() => update(identity, installation.version), 'updating') }}>
+                  {action === 'updating' ? t('mine.updating') : `${t('mine.update')} v${newestVersion}`}
+                </button>
+              )}
+              {installation !== undefined && uninstall !== undefined && (
+                <button type="button" disabled={action !== 'idle'} onClick={uninstallRelease}>
+                  {action === 'uninstalling' ? t('mine.uninstalling') : t('mine.uninstall')}
+                </button>
+              )}
+              <button type="button" className={css.primaryAction} disabled={downloading || action !== 'idle'} onClick={() => { void downloadRelease() }}>
                 <IconDownloadOutline16 size={16} />
                 {downloading ? t('detail.downloading') : t('detail.download')}
               </button>
@@ -191,4 +267,14 @@ function identityFor(skill: CommunitySkillEntry): CommunitySkillIdentityPayload 
     slug: skill.slug,
     version: skill.version,
   }
+}
+
+function compareVersions(left: string, right: string): number {
+  const a = left.split('.').map(part => Number.parseInt(part, 10) || 0)
+  const b = right.split('.').map(part => Number.parseInt(part, 10) || 0)
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return left.localeCompare(right)
 }

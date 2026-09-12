@@ -123,7 +123,9 @@
   color: var(--dsw-alias-brand-primary);
 }
 .newBadge,
-.labels span {
+.labels span,
+.enabledBadge,
+.disabledBadge {
   border-radius: 5px;
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
@@ -132,6 +134,8 @@
   padding: 0 7px;
 }
 .newBadge { color: var(--dsw-alias-state-success-primary); }
+.enabledBadge { color: var(--dsw-alias-state-success-primary); }
+.disabledBadge { color: var(--dsw-alias-label-secondary); }
 .identity { margin-top: 14px; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
 .card h2 { margin: 3px 0 0; font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: 0; overflow-wrap: anywhere; }
 .description {
@@ -209,6 +213,9 @@
 .downloadFailure { align-self: center; margin-right: auto; color: var(--dsw-alias-state-error-primary); font-size: 12px; }
 .dialogFooter .primaryAction { display: inline-flex; align-items: center; gap: 7px; border-color: var(--dsw-alias-brand-primary); background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary-inverted); }
 .dialogFooter button:disabled { cursor: wait; opacity: 0.65; }
+.cardFooter button { min-height: 30px; padding: 0 9px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; cursor: pointer; }
+.cardFooter button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.cardFooter button:disabled { cursor: wait; opacity: 0.65; }
 
 @media (max-width: 1040px) {
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

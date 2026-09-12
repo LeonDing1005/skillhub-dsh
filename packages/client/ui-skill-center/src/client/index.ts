@@ -27,16 +27,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 type RouteProps = PropsRuntime<'shell.page'> & PropsLocale<'skillCenter'>
-  & Pick<SkillCenterPageProps, 'load' | 'loadDetail' | 'download'>
+  & Pick<SkillCenterPageProps, 'load' | 'loadDetail' | 'download' | 'loadInstallations' | 'install' | 'update' | 'setEnabled' | 'uninstall'>
 
-function SkillCenterRoute({ pageId, load, loadDetail, download, t }: RouteProps) {
+function SkillCenterRoute({ pageId, t, ...props }: RouteProps) {
   if (pageId !== SKILL_CENTER_PAGE_ID) return null
-  return createElement(SkillCenterPage, {
-    load,
-    ...(loadDetail === undefined ? {} : { loadDetail }),
-    ...(download === undefined ? {} : { download }),
-    t,
-  })
+  return createElement(SkillCenterPage, { ...props, t })
 }
 
 export const inject = ['slots', 'layout', 'locale', 'connection']
@@ -62,11 +57,41 @@ export function apply(ctx: ClientContext): void {
     anchor.click()
     return Promise.resolve()
   }
+  const loadInstallations: NonNullable<SkillCenterPageProps['loadInstallations']> = async (signal) => {
+    if (api.skills.installationList === undefined) throw new Error('managed installation RPC unavailable')
+    const { result } = await api.skills.installationList({}, signal)
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
+    return result.value
+  }
+  const install: NonNullable<SkillCenterPageProps['install']> = async (identity) => {
+    if (api.skills.installationInstall === undefined) throw new Error('managed installation RPC unavailable')
+    const { result } = await api.skills.installationInstall({ ...identity, idempotencyKey: idempotencyKey() })
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
+    return result.value
+  }
+  const update: NonNullable<SkillCenterPageProps['update']> = async (identity, fromVersion) => {
+    if (api.skills.installationUpdate === undefined) throw new Error('managed installation RPC unavailable')
+    const { result } = await api.skills.installationUpdate({ ...identity, fromVersion, idempotencyKey: idempotencyKey() })
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
+    return result.value
+  }
+  const setEnabled: NonNullable<SkillCenterPageProps['setEnabled']> = async (identity, enabled) => {
+    if (api.skills.installationSetEnabled === undefined) throw new Error('managed installation RPC unavailable')
+    const { result } = await api.skills.installationSetEnabled({ ...identity, enabled, idempotencyKey: idempotencyKey() })
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
+    return result.value
+  }
+  const uninstall: NonNullable<SkillCenterPageProps['uninstall']> = async (identity) => {
+    if (api.skills.installationUninstall === undefined) throw new Error('managed installation RPC unavailable')
+    const { result } = await api.skills.installationUninstall({ ...identity, idempotencyKey: idempotencyKey() })
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
+    return result.value
+  }
   ctx.slots.inject('shell.page', () => ctx.slots.register({
     name: 'shell.page',
     id: String(SKILL_CENTER_PAGE_ID),
     locale: NS,
-    inject: () => ({ load, loadDetail, download }),
+    inject: () => ({ load, loadDetail, download, loadInstallations, install, update, setEnabled, uninstall }),
   }, SkillCenterRoute))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
@@ -75,6 +100,10 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ open: () => { ctx.layout.openPage(SKILL_CENTER_PAGE_ID) } }),
   }, SkillCenterTrigger))
+}
+
+function idempotencyKey(): string {
+  return globalThis.crypto.randomUUID()
 }
 
 function communityDownloadUrl(identity: CommunitySkillIdentityPayload): URL {

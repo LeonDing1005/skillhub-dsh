@@ -2,7 +2,7 @@
 /** Deterministic Community Skills catalog states and card projection. */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CommunitySkillListValue } from '@deepseek-ai/dsh-api-remotes/client'
+import type { CommunitySkillListValue, ManagedSkillInstallationEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import { SkillCenterPage } from '../src/client/SkillCenterPage.tsx'
 import { en } from '../src/client/locales.ts'
 
@@ -47,6 +47,17 @@ const detail = {
   files: [{ path: 'SKILL.md', size: 10, contentType: 'text/markdown', sha256: 'abc' }],
   installCommand: 'skillhub install weather --namespace global --version 1.0.0',
 } as const
+
+const managed: ManagedSkillInstallationEntry = {
+  registryInstanceId: 'public-main',
+  namespace: 'global',
+  slug: 'weather',
+  version: '1.0.0',
+  canonicalName: 'weather-toolkit',
+  enabled: true,
+  installedAt: '2026-08-26T01:00:00.000Z',
+  fingerprint: 'sha256:abc',
+}
 
 afterEach(cleanup)
 
@@ -94,6 +105,31 @@ describe('SkillCenterPage', () => {
 
     expect(screen.getByRole('tab', { name: 'Community Skills' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole<HTMLButtonElement>('tab', { name: 'My Skills' }).disabled).toBe(true)
+  })
+
+  it('loads My Skills and performs disable and uninstall actions', async () => {
+    const setEnabled = vi.fn().mockResolvedValue({ ...managed, enabled: false })
+    const uninstall = vi.fn().mockResolvedValue({ removed: true })
+    render(
+      <SkillCenterPage
+        load={() => Promise.resolve(page)}
+        loadInstallations={() => Promise.resolve({ items: [managed] })}
+        setEnabled={setEnabled}
+        uninstall={uninstall}
+        t={t}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Weather' })
+    fireEvent.click(screen.getByRole('tab', { name: 'My Skills' }))
+    expect(await screen.findByRole('heading', { name: 'weather-toolkit' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Disable' }))
+    await waitFor(() => { expect(setEnabled).toHaveBeenCalledWith({
+      registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
+    }, false) })
+    fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }))
+    await waitFor(() => { expect(uninstall).toHaveBeenCalledWith({
+      registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
+    }) })
   })
 
   it.each(['resolve', 'reject'] as const)('ignores a catalog %s after unmount', async (settlement) => {
@@ -305,5 +341,25 @@ describe('SkillCenterPage', () => {
     await screen.findByRole('dialog', { name: 'weather-toolkit' })
 
     expect(screen.queryByRole('heading', { name: 'Example prompt' })).toBeNull()
+  })
+
+  it('installs a Community Skill from the exact-release dialog', async () => {
+    const install = vi.fn().mockResolvedValue(managed)
+    render(
+      <SkillCenterPage
+        load={() => Promise.resolve(page)}
+        loadDetail={() => Promise.resolve(detail)}
+        download={() => Promise.resolve()}
+        install={install}
+        t={t}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Weather' })
+    fireEvent.click(screen.getByRole('button', { name: 'View details for Weather' }))
+    await screen.findByRole('dialog', { name: 'weather-toolkit' })
+    fireEvent.click(screen.getByRole('button', { name: 'Install to My Skills' }))
+    await waitFor(() => { expect(install).toHaveBeenCalledWith({
+      registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
+    }) })
   })
 })

@@ -5,7 +5,10 @@ import {
   IconDownloadOutline16, IconRefreshOutline16, IconSearchOutline16, IconSkillOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CommunitySkillListPayload, CommunitySkillListValue } from '@deepseek-ai/dsh-api-remotes/client'
-import type { CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillIdentityPayload } from '@deepseek-ai/dsh-api-remotes/client'
+import type {
+  CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillIdentityPayload,
+  ManagedSkillInstallationEntry, ManagedSkillInstallationListValue,
+} from '@deepseek-ai/dsh-api-remotes/client'
 import type { SkillCenterKey } from './locales.ts'
 import { SkillDetailDialog } from './SkillDetailDialog.tsx'
 import css from './SkillCenterPage.module.css'
@@ -19,6 +22,11 @@ export interface SkillCenterPageProps {
   readonly load: (request: CommunitySkillListPayload, signal: AbortSignal) => Promise<CommunitySkillListValue>
   readonly loadDetail?: (identity: CommunitySkillIdentityPayload, signal: AbortSignal) => Promise<CommunitySkillDetailValue>
   readonly download?: (identity: CommunitySkillIdentityPayload) => Promise<void>
+  readonly loadInstallations?: (signal: AbortSignal) => Promise<ManagedSkillInstallationListValue>
+  readonly install?: (identity: CommunitySkillIdentityPayload) => Promise<ManagedSkillInstallationEntry>
+  readonly update?: (identity: CommunitySkillIdentityPayload, fromVersion: string) => Promise<ManagedSkillInstallationEntry>
+  readonly setEnabled?: (identity: CommunitySkillIdentityPayload, enabled: boolean) => Promise<ManagedSkillInstallationEntry>
+  readonly uninstall?: (identity: CommunitySkillIdentityPayload) => Promise<{ removed: boolean }>
   readonly t: (key: SkillCenterKey) => string
 }
 
@@ -32,8 +40,15 @@ type CatalogState =
     readonly refreshing: boolean
   }
 
-/** Render the enabled Community Skills catalog and the disabled My Skills tab. */
-export function SkillCenterPage({ load, loadDetail, download, t }: SkillCenterPageProps) {
+type InstallationState =
+  | { readonly status: 'loading' }
+  | { readonly status: 'failure' }
+  | { readonly status: 'ready'; readonly items: readonly ManagedSkillInstallationEntry[] }
+
+/** Render Community Skills discovery and the managed Personal Skill Inventory. */
+export function SkillCenterPage({
+  load, loadDetail, download, loadInstallations, install, update, setEnabled, uninstall, t,
+}: SkillCenterPageProps) {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [label, setLabel] = useState('')
@@ -41,9 +56,26 @@ export function SkillCenterPage({ load, loadDetail, download, t }: SkillCenterPa
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<CatalogState>({ status: 'loading' })
   const [selected, setSelected] = useState<{ skill: CommunitySkillEntry; opener: HTMLElement }>()
+  const [tab, setTab] = useState<'community' | 'mine'>('community')
+  const [installations, setInstallations] = useState<InstallationState>({ status: 'loading' })
+  const [installationAttempt, setInstallationAttempt] = useState(0)
   const generation = useRef(0)
   const nextController = useRef<AbortController>()
   const keepCardsForRetry = useRef(false)
+  const canManage = loadInstallations !== undefined && setEnabled !== undefined && uninstall !== undefined
+
+  useEffect(() => {
+    if (loadInstallations === undefined) return
+    const abort = new AbortController()
+    setInstallations({ status: 'loading' })
+    loadInstallations(abort.signal).then(
+      (value) => { if (!abort.signal.aborted) setInstallations({ status: 'ready', items: value.items }) },
+      () => { if (!abort.signal.aborted) setInstallations({ status: 'failure' }) },
+    )
+    return () => { abort.abort() }
+  }, [installationAttempt, loadInstallations])
+
+  const refreshInstallations = useCallback(() => { setInstallationAttempt(value => value + 1) }, [])
 
   useEffect(() => {
     const normalized = search.trim()
@@ -124,118 +156,206 @@ export function SkillCenterPage({ load, loadDetail, download, t }: SkillCenterPa
           <h1>{t('title')}</h1>
         </div>
         <div className={css.tabs} role="tablist">
-          <button type="button" role="tab" aria-selected="true" className={css.activeTab}>{t('tab.community')}</button>
-          <button type="button" role="tab" aria-selected="false" disabled>{t('tab.mine')}</button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'community'}
+            className={tab === 'community' ? css.activeTab : undefined}
+            onClick={() => { setTab('community') }}
+          >{t('tab.community')}</button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'mine'}
+            className={tab === 'mine' ? css.activeTab : undefined}
+            disabled={!canManage}
+            onClick={() => { setTab('mine') }}
+          >{t('tab.mine')}</button>
         </div>
       </header>
       <section className={css.content}>
-        <div className={css.discoveryControls}>
-          <label className={css.search}>
-            <IconSearchOutline16 size={16} />
-            <input
-              type="search"
-              aria-label={t('search.label')}
-              placeholder={t('search.placeholder')}
-              value={search}
-              onChange={(event) => { setSearch(event.currentTarget.value) }}
-            />
-          </label>
-          <select
-            className={css.sort}
-            aria-label={t('sort.label')}
-            value={sort}
-            onChange={(event) => { setSort(event.currentTarget.value) }}
-          >
-            <option value="newest">{t('sort.newest')}</option>
-            <option value="downloads">{t('sort.downloads')}</option>
-            <option value="stars">{t('sort.stars')}</option>
-          </select>
-        </div>
-        {state.status === 'ready' && (
-          <div className={css.categories} aria-label={t('categories')}>
-            <button type="button" aria-pressed={label === ''} onClick={() => { setLabel('') }}>{t('all')}</button>
-            {state.value.labels.map(item => (
-              <button
-                type="button"
-                key={item.slug}
-                aria-pressed={label === item.slug}
-                onClick={() => { setLabel(item.slug) }}
-              >
-                {item.title}
-              </button>
-            ))}
-          </div>
+        {tab === 'mine' && canManage && (
+          <ManagedSkills
+            state={installations}
+            setEnabled={setEnabled}
+            uninstall={uninstall}
+            onChanged={refreshInstallations}
+            t={t}
+          />
         )}
-        {state.status === 'loading' && <div className={css.state} role="status">{t('loading')}</div>}
-        {state.status === 'failure' && (
-          <div className={css.state} role="alert">
-            <strong>{t('failure.title')}</strong>
-            <RetryButton label={t('retry')} onClick={retry} />
+        {tab === 'community' && <>
+          <div className={css.discoveryControls}>
+            <label className={css.search}>
+              <IconSearchOutline16 size={16} />
+              <input
+                type="search"
+                aria-label={t('search.label')}
+                placeholder={t('search.placeholder')}
+                value={search}
+                onChange={(event) => { setSearch(event.currentTarget.value) }}
+              />
+            </label>
+            <select
+              className={css.sort}
+              aria-label={t('sort.label')}
+              value={sort}
+              onChange={(event) => { setSort(event.currentTarget.value) }}
+            >
+              <option value="newest">{t('sort.newest')}</option>
+              <option value="downloads">{t('sort.downloads')}</option>
+              <option value="stars">{t('sort.stars')}</option>
+            </select>
           </div>
-        )}
-        {state.status === 'ready' && state.value.freshness === 'stale' && (
-          <div className={css.stale} role="status">
-            <span>{t('stale.prefix')} {state.value.lastSuccessfulAt}</span>
-            <RetryButton label={t('retry')} onClick={retry} disabled={state.refreshing} />
-          </div>
-        )}
-        {state.status === 'ready' && state.value.items.length === 0 && <div className={css.state}>{t('empty.title')}</div>}
-        {state.status === 'ready' && state.value.items.length > 0 && (
-          <>
-            <div className={css.grid}>
-              {state.value.items.map(skill => (
-                <article key={`${skill.registryInstanceId}:${skill.namespace}/${skill.slug}@${skill.version}`} className={css.card}>
-                  {loadDetail !== undefined && download !== undefined && (
-                    <button
-                      type="button"
-                      className={css.cardTarget}
-                      aria-label={`${t('detail.open')} ${skill.title}`}
-                      onClick={(event) => { setSelected({ skill, opener: event.currentTarget }) }}
-                    />
-                  )}
-                  <div className={css.cardTop}>
-                    <div className={css.skillIcon}><IconSkillOutline16 size={20} /></div>
-                    {skill.isNew && <span className={css.newBadge}>{t('new')}</span>}
-                  </div>
-                  <div className={css.identity}>{skill.namespace}/{skill.slug}</div>
-                  <h2>{skill.title}</h2>
-                  <p className={css.description}>{skill.description}</p>
-                  <div className={css.publisher}>{skill.publisher}</div>
-                  <div className={css.labels}>{skill.labels.map(item => <span key={item}>{item}</span>)}</div>
-                  <footer className={css.cardFooter}>
-                    <span className={css.version}>v{skill.version}</span>
-                    <span className={css.metrics}>
-                      <span aria-label={`${skill.starCount} ${t('stars')}`}>{skill.starCount} {t('stars')}</span>
-                      <span aria-label={`${skill.downloadCount} ${t('downloads')}`}><IconDownloadOutline16 size={14} /> {skill.downloadCount}</span>
-                    </span>
-                  </footer>
-                </article>
+          {state.status === 'ready' && (
+            <div className={css.categories} aria-label={t('categories')}>
+              <button type="button" aria-pressed={label === ''} onClick={() => { setLabel('') }}>{t('all')}</button>
+              {state.value.labels.map(item => (
+                <button
+                  type="button"
+                  key={item.slug}
+                  aria-pressed={label === item.slug}
+                  onClick={() => { setLabel(item.slug) }}
+                >
+                  {item.title}
+                </button>
               ))}
             </div>
-            {state.value.items.length < state.value.total && (
-              <div className={css.pagination}>
-                {state.next === 'failure' && <span role="alert">{t('next.failure')}</span>}
-                <button type="button" onClick={loadNext} disabled={state.next === 'loading'}>
-                  {state.next === 'loading'
-                    ? t('next.loading')
-                    : state.next === 'failure' ? t('next.retry') : t('next.load')}
-                </button>
+          )}
+          {state.status === 'loading' && <div className={css.state} role="status">{t('loading')}</div>}
+          {state.status === 'failure' && (
+            <div className={css.state} role="alert">
+              <strong>{t('failure.title')}</strong>
+              <RetryButton label={t('retry')} onClick={retry} />
+            </div>
+          )}
+          {state.status === 'ready' && state.value.freshness === 'stale' && (
+            <div className={css.stale} role="status">
+              <span>{t('stale.prefix')} {state.value.lastSuccessfulAt}</span>
+              <RetryButton label={t('retry')} onClick={retry} disabled={state.refreshing} />
+            </div>
+          )}
+          {state.status === 'ready' && state.value.items.length === 0 && <div className={css.state}>{t('empty.title')}</div>}
+          {state.status === 'ready' && state.value.items.length > 0 && (
+            <>
+              <div className={css.grid}>
+                {state.value.items.map(skill => (
+                  <article key={`${skill.registryInstanceId}:${skill.namespace}/${skill.slug}@${skill.version}`} className={css.card}>
+                    {loadDetail !== undefined && download !== undefined && (
+                      <button
+                        type="button"
+                        className={css.cardTarget}
+                        aria-label={`${t('detail.open')} ${skill.title}`}
+                        onClick={(event) => { setSelected({ skill, opener: event.currentTarget }) }}
+                      />
+                    )}
+                    <div className={css.cardTop}>
+                      <div className={css.skillIcon}><IconSkillOutline16 size={20} /></div>
+                      {skill.isNew && <span className={css.newBadge}>{t('new')}</span>}
+                    </div>
+                    <div className={css.identity}>{skill.namespace}/{skill.slug}</div>
+                    <h2>{skill.title}</h2>
+                    <p className={css.description}>{skill.description}</p>
+                    <div className={css.publisher}>{skill.publisher}</div>
+                    <div className={css.labels}>{skill.labels.map(item => <span key={item}>{item}</span>)}</div>
+                    <footer className={css.cardFooter}>
+                      <span className={css.version}>v{skill.version}</span>
+                      <span className={css.metrics}>
+                        <span aria-label={`${skill.starCount} ${t('stars')}`}>{skill.starCount} {t('stars')}</span>
+                        <span aria-label={`${skill.downloadCount} ${t('downloads')}`}><IconDownloadOutline16 size={14} /> {skill.downloadCount}</span>
+                      </span>
+                    </footer>
+                  </article>
+                ))}
               </div>
-            )}
-          </>
-        )}
+              {state.value.items.length < state.value.total && (
+                <div className={css.pagination}>
+                  {state.next === 'failure' && <span role="alert">{t('next.failure')}</span>}
+                  <button type="button" onClick={loadNext} disabled={state.next === 'loading'}>
+                    {state.next === 'loading'
+                      ? t('next.loading')
+                      : state.next === 'failure' ? t('next.retry') : t('next.load')}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>}
       </section>
       {selected !== undefined && loadDetail !== undefined && download !== undefined && (
         <SkillDetailDialog
           skill={selected.skill}
           load={loadDetail}
           download={download}
+          {...(() => {
+            const installation = installations.status === 'ready'
+              ? installations.items.find(item => sameIdentity(item, identityFor(selected.skill)))
+              : undefined
+            return {
+              ...(installation === undefined ? {} : { installation }),
+              ...(install === undefined ? {} : { install }),
+              ...(update === undefined ? {} : { update }),
+              ...(setEnabled === undefined ? {} : { setEnabled }),
+              ...(uninstall === undefined ? {} : { uninstall }),
+            }
+          })()}
+          onChanged={refreshInstallations}
           onClose={() => { setSelected(undefined) }}
           returnFocus={selected.opener}
           t={t}
         />
       )}
     </main>
+  )
+}
+
+function ManagedSkills({
+  state, setEnabled, uninstall, onChanged, t,
+}: {
+  readonly state: InstallationState
+  readonly setEnabled: NonNullable<SkillCenterPageProps['setEnabled']>
+  readonly uninstall: NonNullable<SkillCenterPageProps['uninstall']>
+  readonly onChanged: () => void
+  readonly t: (key: SkillCenterKey) => string
+}) {
+  if (state.status === 'loading') return <div className={css.state} role="status">{t('mine.loading')}</div>
+  if (state.status === 'failure') return <div className={css.state} role="alert">{t('mine.failure')}</div>
+  if (state.items.length === 0) return <div className={css.state}>{t('mine.empty')}</div>
+  return (
+    <div className={css.grid}>
+      {state.items.map(item => <ManagedSkillCard key={`${item.registryInstanceId}:${item.namespace}/${item.slug}@${item.version}`} item={item} setEnabled={setEnabled} uninstall={uninstall} onChanged={onChanged} t={t} />)}
+    </div>
+  )
+}
+
+function ManagedSkillCard({
+  item, setEnabled, uninstall, onChanged, t,
+}: {
+  readonly item: ManagedSkillInstallationEntry
+  readonly setEnabled: NonNullable<SkillCenterPageProps['setEnabled']>
+  readonly uninstall: NonNullable<SkillCenterPageProps['uninstall']>
+  readonly onChanged: () => void
+  readonly t: (key: SkillCenterKey) => string
+}) {
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const mutate = async (operation: () => Promise<unknown>) => {
+    setBusy(true); setFailed(false)
+    try { await operation(); onChanged() } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  const identity = identityFor(item)
+  return (
+    <article className={css.card}>
+      <div className={css.cardTop}><div className={css.skillIcon}><IconSkillOutline16 size={20} /></div><span className={item.enabled ? css.enabledBadge : css.disabledBadge}>{item.enabled ? t('mine.enabled') : t('mine.disabled')}</span></div>
+      <div className={css.identity}>{item.namespace}/{item.slug}</div>
+      <h2>{item.canonicalName}</h2>
+      <p className={css.description}>v{item.version}</p>
+      <div className={css.publisher}>{item.fingerprint}</div>
+      <footer className={css.cardFooter}>
+        {failed && <span className={css.downloadFailure} role="alert">{t('mine.action.failure')}</span>}
+        <button type="button" disabled={busy} onClick={() => { void mutate(() => setEnabled(identity, !item.enabled)) }}>{item.enabled ? t('mine.disable') : t('mine.enable')}</button>
+        <button type="button" disabled={busy} onClick={() => { void mutate(() => uninstall(identity)) }}>{busy ? t('mine.uninstalling') : t('mine.uninstall')}</button>
+      </footer>
+    </article>
   )
 }
 
@@ -251,6 +371,22 @@ function listRequest(query: string, label: string, sort: string, page: number): 
     page,
     pageSize: PAGE_SIZE,
   }
+}
+
+function identityFor(skill: CommunitySkillEntry | ManagedSkillInstallationEntry): CommunitySkillIdentityPayload {
+  return {
+    registryInstanceId: skill.registryInstanceId,
+    namespace: skill.namespace,
+    slug: skill.slug,
+    version: skill.version,
+  }
+}
+
+function sameIdentity(left: CommunitySkillIdentityPayload, right: CommunitySkillIdentityPayload): boolean {
+  return left.registryInstanceId === right.registryInstanceId
+    && left.namespace === right.namespace
+    && left.slug === right.slug
+    && left.version === right.version
 }
 
 function RetryButton({ label, onClick, disabled = false }: { label: string; onClick: () => void; disabled?: boolean }) {

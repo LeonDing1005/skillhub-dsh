@@ -40,6 +40,20 @@ export const en = {
   'detail.downloading': 'Preparing download',
   'detail.download.failure': 'Download failed',
   'detail.cancel': 'Cancel',
+  'mine.loading': 'Loading My Skills',
+  'mine.empty': 'No managed skills installed',
+  'mine.failure': 'My Skills unavailable',
+  'mine.enabled': 'Enabled',
+  'mine.disabled': 'Disabled',
+  'mine.enable': 'Enable',
+  'mine.disable': 'Disable',
+  'mine.uninstall': 'Uninstall',
+  'mine.install': 'Install to My Skills',
+  'mine.installing': 'Installing',
+  'mine.updating': 'Updating',
+  'mine.update': 'Update',
+  'mine.uninstalling': 'Uninstalling',
+  'mine.action.failure': 'Skill action failed',
 } as const
 
 /** Simplified Chinese product copy. */
@@ -84,6 +98,20 @@ export const zh: Record<keyof typeof en, string> = {
   'detail.downloading': '正在准备下载',
   'detail.download.failure': '下载失败',
   'detail.cancel': '取消',
+  'mine.loading': '正在加载我的技能',
+  'mine.empty': '尚未安装托管技能',
+  'mine.failure': '我的技能暂不可用',
+  'mine.enabled': '已启用',
+  'mine.disabled': '已禁用',
+  'mine.enable': '启用',
+  'mine.disable': '禁用',
+  'mine.uninstall': '卸载',
+  'mine.install': '安装到我的技能',
+  'mine.installing': '正在安装',
+  'mine.updating': '正在更新',
+  'mine.update': '更新',
+  'mine.uninstalling': '正在卸载',
+  'mine.action.failure': '技能操作失败',
 }
 
 /** Locale keys required by the Skill Center surface. */
