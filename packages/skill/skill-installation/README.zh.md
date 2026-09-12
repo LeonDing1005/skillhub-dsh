@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向 Host 的 Community Skill 版本准入、生命周期操作、不可变存储和 managed `ctx.skills` provider。此包依据 Registry Instance 元数据验证下载的 ZIP 字节，在唯一的私有 staging 目录下写入已验证内容和 receipt，通过同一文件系统内的目录重命名同时发布两者，并记录生命周期操作结果以支持 Host 幂等重试。`ManagedSkillProvider` 只贡献已启用且已验证的包，存储路径和源服务器元数据始终留在内部。
+面向 Host 的 Community Skill 版本准入、生命周期操作、不可变存储和 managed `ctx.skills` provider。此包依据 Registry Instance 元数据验证下载的 ZIP 字节，在唯一的私有 staging 目录下写入已验证内容和 receipt，通过同一文件系统内的目录重命名同时发布两者，并记录生命周期操作结果以支持 Host 幂等重试。`ManagedSkillProvider` 会在发现和加载时解析已提交的 `SKILL.md`，只贡献已启用且已验证的包，在加载前再次核对 enabled 状态，并始终把存储路径和源服务器元数据留在内部。
 
 ## API
 
@@ -74,6 +74,10 @@ receipt 记录 Registry Instance 与远程身份、adapter 与源服务器、规
 安装会准入一个确切发布版本并返回安全 receipt 投影。更新要求请求的源版本已经安装，然后准入请求的目标版本、禁用源版本，并且只有在两个包 receipt 都可写入后才启用新版本。启用和禁用只修改 receipt 的 `enabled` 字段；卸载会删除一个确切包及其过期操作记录，使恢复不会重放已经删除的包。卸载对不存在的包保持幂等，并报告 `removed: false`。
 
 启动恢复会创建私有根目录，移除遗留 staging 目录和 `.admitting-*` 包目录，验证完整 receipt 与不可变内容，删除过期 running 操作记录和死亡目标锁，并只保留包 receipt 仍能验证的 completed 操作记录。completed 卸载记录可以在没有包 receipt 的情况下重放。恢复绝不会提升部分包数据。损坏的持久包或 completed 操作记录会作为类型化损坏失败，使 Host 可以停止暴露不安全状态，而不是猜测。成功生命周期结果返回安全 receipt 投影，省略源服务器和托管内容路径；需要本地包路径的调用方只在 Host 内读取已验证的存储 receipt。
+
+`ManagedSkillProvider` 会把每份已提交 `SKILL.md` 的 description、`whenToUse`、调用策略、metadata 和 opaque resource base 带入 registry candidate。禁用或卸载后仍被保留的候选会在加载时被拒绝，因此面向模型和用户的 consumer 都不能在 receipt 离开 enabled 集合后加载该包。managed candidate 使用 550 的 rank：项目、runtime、custom 和 user 目录保持原有优先级，managed 包优先于 bundled 目录。
+
+如果某份 managed 文档或持久化 receipt 存储无法读取，provider 会保留已经验证的候选，但返回不完整 observation。此时 `ctx.skills.snapshot()` 会报告 `complete: false`，consumer 不会把部分 catalog 误认为协调成功，并会在下一次请求边界重试。
 
 ## 模型体验
 

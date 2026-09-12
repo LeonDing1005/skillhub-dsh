@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Host-side admission, lifecycle operations, immutable storage, and the managed `ctx.skills` provider for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records lifecycle operation results for idempotent Host retry. `ManagedSkillProvider` contributes only enabled, verified packages and keeps storage paths and source-server metadata internal.
+Host-side admission, lifecycle operations, immutable storage, and the managed `ctx.skills` provider for Community Skill releases. This package validates downloaded ZIP bytes against Registry Instance metadata, writes verified content and a receipt below one private staging directory, publishes both with a same-filesystem directory rename, and records lifecycle operation results for idempotent Host retry. `ManagedSkillProvider` parses each committed `SKILL.md` for discovery and loading, contributes only enabled, verified packages, rechecks enablement before loading, and keeps storage paths and source-server metadata internal.
 
 ## API
 
@@ -74,6 +74,10 @@ Operation records live beside the package store under `v1/operations/`, separate
 Install admits one exact release and returns a safe receipt projection. Update requires the requested source version to be installed, admits the requested target version, disables the source version, and enables the new version only after both package receipts can be written. Enable and disable mutate only the receipt's `enabled` field; uninstall removes one exact package and its stale operation records so recovery does not replay a removed package. Uninstall is idempotent for an absent package and reports `removed: false`.
 
 Startup recovery creates the private roots, removes abandoned staging directories and `.admitting-*` package directories, validates complete receipts and immutable content, removes stale running operation records and dead target locks, and keeps only completed operation records whose package receipts still verify. Completed uninstall records are replayable without a package receipt. Recovery never promotes partial package data. Corrupt durable packages or completed operation records fail as typed corruption so the Host can stop exposing unsafe state instead of guessing. Successful lifecycle results return safe receipt projections that omit the source server and managed content path; callers that need local package paths read verified store receipts inside the Host.
+
+`ManagedSkillProvider` carries the parsed description, `whenToUse`, invocation policy, metadata, and opaque resource base from each committed `SKILL.md` into the registry candidate. A candidate retained across a disable or uninstall is rejected during loading, so model-facing and user-facing consumers cannot load a package after its receipt leaves the enabled set. Managed candidates use rank 550: project, runtime, custom, and user roots retain their existing precedence, while managed packages outrank bundled roots.
+
+If one managed document or the durable receipt store cannot be read, the provider retains any candidates it did verify but returns an incomplete observation. `ctx.skills.snapshot()` then reports `complete: false`, so consumers do not mistake a partial catalog for a successful reconciliation and retry at their next request boundary.
 
 ## Model Experience
 

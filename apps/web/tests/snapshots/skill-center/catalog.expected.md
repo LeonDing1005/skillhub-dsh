@@ -3,7 +3,7 @@
   - heading "Skill Center" [level=1]
   - tablist:
     - tab "Community Skills" [selected]
-    - tab "My Skills" [disabled]
+    - tab "My Skills"
   - img
   - searchbox "Search Community Skills"
   - combobox "Sort Community Skills":

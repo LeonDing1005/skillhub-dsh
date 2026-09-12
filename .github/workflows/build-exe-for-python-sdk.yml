@@ -195,14 +195,33 @@ jobs:
           esac
           addon_dir="$(realpath packages/subprocess/subprocess-local/node_modules/node-pty)"
           addon="$addon_dir/build/Release/pty.node"
+          addon_api_dir="$(dirname "$(cd "$addon_dir" && node -p "require.resolve('node-addon-api/package.json')")")"
+          node_gyp_dir="$(npm root -g)/npm/node_modules/node-gyp"
+          node_gyp_cache="$HOME/.cache/node-gyp"
+          node_version="$(node -p "process.versions.node")"
+          node "$node_gyp_dir/bin/node-gyp.js" install --ensure --devdir="$node_gyp_cache" --target="$node_version"
           [ -f "$addon_dir/build/Makefile" ] || {
             echo "::error::node-pty install did not generate $addon_dir/build/Makefile"
             exit 1
           }
+          # node-gyp emits the node-addon-api dependency make fragments only when
+          # that package is the configured project. pnpm keeps this dependency in
+          # its own virtual-store directory, so generate those fragments before
+          # the manylinux container runs GNU make over node-pty's Makefile.
+          (cd "$addon_api_dir" && python "$node_gyp_dir/gyp/gyp_main.py" \
+            -f make --depth=. --generator-output=. node_addon_api.gyp)
+          make_api_dir="$addon_dir/build/../../../node-addon-api@7.1.1/node_modules/node-addon-api"
+          mkdir -p "$make_api_dir"
+          for fragment in node_addon_api.target.mk node_addon_api_except.target.mk node_addon_api_maybe.target.mk; do
+            cp "$addon_api_dir/$fragment" "$make_api_dir/$fragment"
+          done
+          # The fragments and headers were prepared above; keep make from
+          # rerunning the host gyp entrypoint inside the read-only container.
+          touch "$addon_dir/build/Makefile"
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -v "$PWD:$PWD" \
-            -v "$HOME/.cache/node-gyp:$HOME/.cache/node-gyp:ro" \
+            -v "$node_gyp_cache:$node_gyp_cache:ro" \
             -v "$HOME/setup-pnpm:$HOME/setup-pnpm:ro" \
             -w "$addon_dir" \
             "$image" \

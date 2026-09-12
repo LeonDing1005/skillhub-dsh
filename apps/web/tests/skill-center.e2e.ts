@@ -19,10 +19,17 @@ import { saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/skill-center', import.meta.url))
 const CATALOG_EXPECTED = join(SNAPSHOT_DIR, 'catalog.expected.md')
-const DETAIL_DSH_EXPECTED = join(SNAPSHOT_DIR, 'detail-dsh.expected.png')
-const DETAIL_LOCAL_EXPECTED = join(SNAPSHOT_DIR, 'detail-local.expected.png')
-const DETAIL_COPIED_EXPECTED = join(SNAPSHOT_DIR, 'detail-copied.expected.png')
-const DETAIL_LONG_EXPECTED = join(SNAPSHOT_DIR, 'detail-long.expected.png')
+// Linux and macOS use different system font rasterizers. Keep the visual
+// comparison strict by selecting a golden produced by the current renderer;
+// refresh mode writes the same platform-specific path.
+const DETAIL_SNAPSHOT_SUFFIX = process.platform === 'linux' ? '.linux' : ''
+function detailSnapshot(name: string): string {
+  return join(SNAPSHOT_DIR, `${name}${DETAIL_SNAPSHOT_SUFFIX}.expected.png`)
+}
+const DETAIL_DSH_EXPECTED = detailSnapshot('detail-dsh')
+const DETAIL_LOCAL_EXPECTED = detailSnapshot('detail-local')
+const DETAIL_COPIED_EXPECTED = detailSnapshot('detail-copied')
+const DETAIL_LONG_EXPECTED = detailSnapshot('detail-long')
 const MODE = webSnapshotMode()
 // The catalog golden uses an expired release; unit coverage owns the clock-sensitive New window.
 const RESPONSE_FIXTURE_DIR = fileURLToPath(new URL('../../../packages/skill/skill-marketplace/tests/fixtures/', import.meta.url))
@@ -219,7 +226,7 @@ describe('web e2e: Skill Center', () => {
     await page.getByRole('heading', { name: 'Weather' }).waitFor({ timeout: 15_000 })
 
     expect(await page.getByRole('tab', { name: 'Community Skills' }).getAttribute('aria-selected')).toBe('true')
-    expect(await page.getByRole('tab', { name: 'My Skills' }).isDisabled()).toBe(true)
+    expect(await page.getByRole('tab', { name: 'My Skills' }).isDisabled()).toBe(false)
     expect(await page.getByLabel('0 stars').count()).toBe(1)
     expect(await page.getByLabel('0 downloads').count()).toBe(1)
     const aria = await captureStableAria(page, 'main[aria-label="Skill Center"]', scaffold.workspaceCwd)

@@ -139,6 +139,24 @@ function managedInstallationView(receipt: ManagedSkillInstallReceipt): ManagedSk
   }
 }
 
+/** Run one managed-installation RPC action and fold missing-service or domain failures onto the wire. */
+async function withManagedInstallation<T>(
+  ctx: Context,
+  request: RpcRequest<unknown>,
+  action: (service: ManagedInstallationService) => Promise<T>,
+  errorMessage: (error: unknown) => string = String,
+): Promise<RpcResponse<T>> {
+  const service = ctx.get('managedInstallation')
+  if (service === undefined) {
+    return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+  }
+  try {
+    return ok(request, await action(service))
+  } catch (error: unknown) {
+    return err(request, { code: 'internal', message: errorMessage(error), details: {} })
+  }
+}
+
 /** Page size when history is called without maxMessages. */
 const DEFAULT_MAX_MESSAGES = 50
 
@@ -3389,48 +3407,33 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
       },
       async installationList(request) {
-        const service = ctx.get('managedInstallation')
-        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
-        try {
-          const items = (await service.listReceipts()).map(managedInstallationView)
-          return ok(request, { items })
-        } catch (error: unknown) {
-          return err(request, { code: 'internal', message: `Managed Skill installation listing failed: ${String(error)}`, details: {} })
-        }
+        return withManagedInstallation(ctx, request, async service => ({
+          items: (await service.listReceipts()).map(managedInstallationView),
+        }), error => `Managed Skill installation listing failed: ${String(error)}`)
       },
       async installationInstall(request, signal) {
-        const service = ctx.get('managedInstallation')
-        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
-        try {
+        return withManagedInstallation(ctx, request, async (service) => {
           const result = await service.install({
             identity: managedIdentity(request.payload),
             version: request.payload.version,
             idempotencyKey: request.payload.idempotencyKey,
           }, signal)
-          return ok(request, managedInstallationView(result.receipt))
-        } catch (error: unknown) {
-          return err(request, { code: 'internal', message: String(error), details: {} })
-        }
+          return managedInstallationView(result.receipt)
+        })
       },
       async installationUpdate(request, signal) {
-        const service = ctx.get('managedInstallation')
-        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
-        try {
+        return withManagedInstallation(ctx, request, async (service) => {
           const result = await service.update({
             identity: managedIdentity(request.payload),
             fromVersion: request.payload.fromVersion,
             toVersion: request.payload.version,
             idempotencyKey: request.payload.idempotencyKey,
           }, signal)
-          return ok(request, managedInstallationView(result.receipt))
-        } catch (error: unknown) {
-          return err(request, { code: 'internal', message: String(error), details: {} })
-        }
+          return managedInstallationView(result.receipt)
+        })
       },
       async installationSetEnabled(request) {
-        const service = ctx.get('managedInstallation')
-        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
-        try {
+        return withManagedInstallation(ctx, request, async (service) => {
           const result = request.payload.enabled
             ? await service.enable({
               identity: managedIdentity(request.payload),
@@ -3442,24 +3445,18 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               version: request.payload.version,
               idempotencyKey: request.payload.idempotencyKey,
             })
-          return ok(request, managedInstallationView(result.receipt))
-        } catch (error: unknown) {
-          return err(request, { code: 'internal', message: String(error), details: {} })
-        }
+          return managedInstallationView(result.receipt)
+        })
       },
       async installationUninstall(request) {
-        const service = ctx.get('managedInstallation')
-        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
-        try {
+        return withManagedInstallation(ctx, request, async (service) => {
           const result = await service.uninstall({
             identity: managedIdentity(request.payload),
             version: request.payload.version,
             idempotencyKey: request.payload.idempotencyKey,
           })
-          return ok(request, { removed: result.removed })
-        } catch (error: unknown) {
-          return err(request, { code: 'internal', message: String(error), details: {} })
-        }
+          return { removed: result.removed }
+        })
       },
     },
 

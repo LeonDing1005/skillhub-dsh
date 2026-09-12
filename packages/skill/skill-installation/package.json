@@ -44,8 +44,10 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-atomic-write": "workspace:^",
+    "@deepseek-ai/dsh-app-boot": "workspace:^",
     "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-loader-smoke": "workspace:^",
     "@deepseek-ai/dsh-skill-filesystem": "workspace:^",
     "@deepseek-ai/dsh-skill": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",

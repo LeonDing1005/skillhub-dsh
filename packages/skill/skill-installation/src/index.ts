@@ -10,12 +10,19 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { chmod, lstat, mkdir, open, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, posix, resolve } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { parseSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
+import { parseSkillDocument, type ParsedSkillDocument } from '@deepseek-ai/dsh-skill-filesystem'
 import type { Context } from '@deepseek-ai/cordis'
-import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProvider, SkillProviderControl } from '@deepseek-ai/dsh-skill'
+import type {
+  SkillCandidate,
+  SkillDefinition,
+  SkillLookupOptions,
+  SkillProvider,
+  SkillProviderControl,
+  SkillProviderObservation,
+} from '@deepseek-ai/dsh-skill'
 import { extractSkillArchive } from './archive.ts'
 import { fail, ManagedSkillAdmissionError } from './error.ts'
 import { computeSkillHubFingerprint } from './fingerprint.ts'
@@ -629,8 +636,20 @@ export class ManagedInstallationService {
   }
 
   private async ensureReady(): Promise<void> {
-    this.ready ??= this.recover().then(() => {})
-    await this.ready
+    const current = this.ready
+    if (current !== undefined) {
+      await current
+      return
+    }
+    const recovery = this.recover().then(
+      () => {},
+      (error: unknown) => {
+        if (this.ready === recovery) this.ready = undefined
+        throw error
+      },
+    )
+    this.ready = recovery
+    await recovery
   }
 
   private notifyChange(): void {
@@ -642,6 +661,7 @@ export class ManagedInstallationService {
 
 interface ManagedSkillLocator {
   readonly receipt: ManagedSkillReceipt
+  readonly document: ParsedSkillDocument
 }
 
 /** Provider exposing enabled, verified managed packages through `ctx.skills`. */
@@ -651,6 +671,7 @@ export class ManagedSkillProvider implements SkillProvider {
   constructor(
     private readonly service: ManagedInstallationService,
     control?: SkillProviderControl,
+    private readonly reportFailure: (error: unknown) => void = () => {},
   ) {
     if (control !== undefined) {
       const unsubscribe = service.onChange(control.invalidate)
@@ -658,27 +679,71 @@ export class ManagedSkillProvider implements SkillProvider {
     }
   }
 
-  async list(_options: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
-    const receipts = await this.service.listReceipts()
-    return receipts.filter(receipt => receipt.enabled).map(receipt => ({
-      name: receipt.canonicalName,
-      description: `Managed Community Skill ${receipt.canonicalName}`,
-      invocation: { modelInvocable: true, userInvocable: true },
-      source: 'custom',
-      provider: this.name,
-      rank: MANAGED_SKILL_RANK,
-      locator: { receipt },
-    }))
+  /**
+   * Discover enabled managed packages after startup reconciliation.
+   * @param options - lookup options whose signal cancels receipt and document reads.
+   * @returns candidates, or an incomplete observation when durable discovery fails after startup.
+   * @throws when cancellation is requested; other provider-owned read failures are represented by `complete: false`.
+   */
+  async list(options: SkillLookupOptions): Promise<readonly SkillCandidate[] | SkillProviderObservation> {
+    let receipts: readonly ManagedSkillReceipt[]
+    try {
+      receipts = await this.service.listReceipts()
+    } catch (error) {
+      options.signal?.throwIfAborted()
+      this.reportFailure(error)
+      return { candidates: [], complete: false }
+    }
+    const candidates: SkillCandidate[] = []
+    let complete = true
+    for (const receipt of receipts) {
+      options.signal?.throwIfAborted()
+      if (!receipt.enabled) continue
+      try {
+        const document = await readManagedSkillDocument(receipt, options.signal)
+        if (document === undefined) {
+          throw new Error(`managed skill "${receipt.canonicalName}" is missing its committed SKILL.md`)
+        }
+        if (document.name !== receipt.canonicalName) {
+          throw new Error(`managed skill "${receipt.canonicalName}" does not match its committed SKILL.md name`)
+        }
+        candidates.push({
+          name: document.name,
+          description: document.description,
+          ...document.whenToUse !== undefined ? { whenToUse: document.whenToUse } : {},
+          invocation: document.invocation,
+          source: 'custom',
+          provider: this.name,
+          rank: MANAGED_SKILL_RANK,
+          locator: { receipt, document },
+          resourceBase: managedResourceBase(),
+          ...document.metadata !== undefined ? { metadata: document.metadata } : {},
+        })
+      } catch (error) {
+        options.signal?.throwIfAborted()
+        this.reportFailure(error)
+        complete = false
+      }
+    }
+    return complete ? candidates : { candidates, complete }
   }
 
-  async get(candidate: SkillCandidate, _options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
+  /**
+   * Load a listed managed package only while its verified receipt remains enabled.
+   * @param candidate - candidate previously returned by {@link list}.
+   * @param options - lookup options whose signal cancels the load.
+   * @returns the parsed definition, or `undefined` when the receipt was disabled or removed.
+   */
+  async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
     const locator = candidate.locator as ManagedSkillLocator
-    const raw = await readFile(join(locator.receipt.managedLocation, 'SKILL.md'), 'utf8').catch((error: unknown) => {
-      if (isCode(error, 'ENOENT')) return undefined
-      throw error
-    })
-    if (raw === undefined) return undefined
-    const parsed = parseSkillDocument(raw)
+    options.signal?.throwIfAborted()
+    const current = (await this.service.listReceipts()).find(receipt =>
+      receipt.enabled
+      && receipt.version === locator.receipt.version
+      && sameRemoteIdentity(receipt.identity, locator.receipt.identity),
+    )
+    if (current === undefined) return undefined
+    const parsed = locator.document
     if (parsed.name !== candidate.name) return undefined
     return {
       name: parsed.name,
@@ -687,16 +752,38 @@ export class ManagedSkillProvider implements SkillProvider {
       invocation: parsed.invocation,
       source: 'custom',
       provider: this.name,
-      resourceBase: { kind: 'opaque', description: 'Resources are managed by the local Skill Center.' },
+      resourceBase: managedResourceBase(),
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
       content: parsed.content,
     }
   }
 }
 
+function managedResourceBase(): { readonly kind: 'opaque'; readonly description: string } {
+  return { kind: 'opaque', description: 'Resources are managed by the local Skill Center.' }
+}
+
+async function readManagedSkillDocument(
+  receipt: ManagedSkillReceipt,
+  signal?: AbortSignal,
+): Promise<ParsedSkillDocument | undefined> {
+  try {
+    const raw = await readFile(join(receipt.managedLocation, 'SKILL.md'), { encoding: 'utf8', signal })
+    return parseSkillDocument(raw)
+  } catch (error) {
+    signal?.throwIfAborted()
+    if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) return undefined
+    throw error
+  }
+}
+
 /** Register a managed installation provider on an existing skill registry. */
 export const apply = (ctx: Context, service: ManagedInstallationService): (() => void) => {
-  return ctx.skills.registerProvider(control => new ManagedSkillProvider(service, control))
+  return ctx.skills.registerProvider(control => new ManagedSkillProvider(
+    service,
+    control,
+    (error) => { ctx.logger.warn(`managed skill provider discovery incomplete: ${String(error)}`) },
+  ))
 }
 
 function normalizeRelease(release: ManagedSkillRelease): NormalizedRelease {
@@ -755,18 +842,22 @@ function isSafeManifestPath(path: string): boolean {
   return !path.endsWith('/') && isSafeManagedPath(path)
 }
 
+function validateRequestStrings(fields: readonly (readonly [string, string])[], subject: string): void {
+  for (const [field, value] of fields) {
+    if (value === '' || value.trim() !== value || value.includes('\0')) {
+      fail(`${subject} ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
+    }
+  }
+}
+
 function normalizeInstallRequest(request: ManagedSkillInstallRequest): InstallTarget {
-  for (const [field, value] of [
+  validateRequestStrings([
     ['registryInstanceId', request.identity.registryInstanceId],
     ['namespace', request.identity.namespace],
     ['slug', request.identity.slug],
     ['version', request.version],
     ['idempotencyKey', request.idempotencyKey],
-  ] as const) {
-    if (value === '' || value.trim() !== value || value.includes('\0')) {
-      fail(`Managed installation ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
-    }
-  }
+  ], 'Managed installation')
   return {
     identity: { ...request.identity },
     version: request.version,
@@ -774,33 +865,25 @@ function normalizeInstallRequest(request: ManagedSkillInstallRequest): InstallTa
 }
 
 function normalizeLifecycleRequest(request: ManagedSkillLifecycleRequest): InstallTarget {
-  for (const [field, value] of [
+  validateRequestStrings([
     ['registryInstanceId', request.identity.registryInstanceId],
     ['namespace', request.identity.namespace],
     ['slug', request.identity.slug],
     ['version', request.version],
     ['idempotencyKey', request.idempotencyKey],
-  ] as const) {
-    if (value === '' || value.trim() !== value || value.includes('\0')) {
-      fail(`Managed lifecycle ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
-    }
-  }
+  ], 'Managed lifecycle')
   return { identity: { ...request.identity }, version: request.version }
 }
 
 function normalizeUpdateRequest(request: ManagedSkillUpdateRequest): UpdateTarget {
-  for (const [field, value] of [
+  validateRequestStrings([
     ['registryInstanceId', request.identity.registryInstanceId],
     ['namespace', request.identity.namespace],
     ['slug', request.identity.slug],
     ['fromVersion', request.fromVersion],
     ['toVersion', request.toVersion],
     ['idempotencyKey', request.idempotencyKey],
-  ] as const) {
-    if (value === '' || value.trim() !== value || value.includes('\0')) {
-      fail(`Managed update ${field} must be a non-empty trimmed string.`, 'INVALID_REQUEST')
-    }
-  }
+  ], 'Managed update')
   if (request.fromVersion === request.toVersion) fail('Managed update requires different source and target versions.', 'INVALID_REQUEST')
   return { identity: { ...request.identity }, fromVersion: request.fromVersion, toVersion: request.toVersion }
 }
@@ -1071,10 +1154,15 @@ async function writeReceiptState(packagePath: string, enabled: boolean): Promise
   const current = await readReceipt(packagePath)
   if (current.enabled === enabled) return current
   const receipt: ManagedSkillReceipt = { ...current, enabled }
+  const receiptPath = join(packagePath, RECEIPT_FILE)
   try {
     await chmod(packagePath, 0o700)
-    await writeFileAtomic(join(packagePath, RECEIPT_FILE), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o444, dirMode: 0o700 })
-    await chmod(join(packagePath, RECEIPT_FILE), 0o444)
+    // Windows refuses to replace a read-only target during rename. The receipt
+    // is store-owned and already validated above, so make that exact file
+    // writable before the atomic replacement, then restore its immutable mode.
+    await chmod(receiptPath, 0o600)
+    await writeFileAtomic(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o444, dirMode: 0o700 })
+    await chmod(receiptPath, 0o444)
   } finally {
     await chmod(packagePath, 0o555).catch(() => {})
   }
@@ -1102,13 +1190,39 @@ async function readReceipt(packagePath: string): Promise<ManagedSkillReceipt> {
     const receiptPath = join(packagePath, RECEIPT_FILE)
     await assertDurableEntry(receiptPath, 'file')
     const raw: unknown = JSON.parse(await readFile(receiptPath, 'utf8'))
-    const receipt = validateReceipt(raw, packagePath)
+    const receipt = validateReceipt(await normalizeReceiptLocation(raw, packagePath), packagePath)
     await verifyDurableContent(receipt)
     return receipt
   } catch (error) {
     if (error instanceof ManagedSkillAdmissionError) throw error
     fail(`Managed package receipt at "${packagePath}" is unreadable.`, 'STORE_CORRUPT', error)
   }
+}
+
+/**
+ * Normalize a persisted managed location to the current Windows path spelling.
+ * Windows can hand the writer and the restarted reader different spellings for
+ * the same temporary directory (for example, a short 8.3 component). The
+ * package path remains authoritative; the persisted location is accepted only
+ * when both spellings resolve to that exact directory.
+ * @param value - decoded receipt value before structural validation.
+ * @param packagePath - current store-owned package directory.
+ * @returns the original value, or a copy with the canonical managed location.
+ */
+async function normalizeReceiptLocation(value: unknown, packagePath: string): Promise<unknown> {
+  /* v8 ignore next -- Windows-only path spelling differs from POSIX text. */
+  if (process.platform !== 'win32' || !isRecord(value) || typeof value.managedLocation !== 'string') return value
+  const expected = join(packagePath, CONTENT_DIRECTORY)
+  try {
+    const [actualPath, expectedPath] = await Promise.all([
+      realpath(value.managedLocation),
+      realpath(expected),
+    ])
+    if (actualPath.toLowerCase() === expectedPath.toLowerCase()) return { ...value, managedLocation: expected }
+  } catch {
+    // Preserve the original value so structural validation reports corruption.
+  }
+  return value
 }
 
 async function verifyDurableContent(receipt: ManagedSkillReceipt): Promise<void> {
