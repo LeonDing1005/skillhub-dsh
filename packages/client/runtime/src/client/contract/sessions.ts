@@ -28,6 +28,8 @@ export interface ISessions {
   readonly list: ObservableSnapshot<SessionListState>
   /** Atomic current-session provide projection (the renderer host's `sessions.provideInfo` feed). */
   readonly currentProvideInfo: HostObservable<SessionMaybeProvideInfo>
+  /** Create an ordinary blank Session and return its id once it is addressable. */
+  create(opts?: { workspaceId?: import('@deepseek-ai/dsh-api-remotes/client').WorkspaceId; cwd?: string; sessionId?: SessionId }): Promise<SessionId>
   /**
    * The `session.search` result bound the wire schema fixes, exposed to
    * presentation as injected data. Not per-connection state: every transport

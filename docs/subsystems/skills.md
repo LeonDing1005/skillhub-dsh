@@ -2,9 +2,9 @@
 
 English | [中文](skills.zh.md)
 
-The [skill capability family](../../packages/skill) includes the Service Definition ([dsh-skill](../../packages/skill/skill), `ctx.skills`), the local Service Provider ([dsh-skill-filesystem](../../packages/skill/skill-filesystem)), the optional packaged badge provider ([dsh-skill-badge](../../packages/skill/skill-badge)), and the Consumer ([dsh-tool-skill](../../packages/skill/tool-skill)). The registry merges provider catalogs across its host and per-scope layers; providers contribute local or packaged skills; the Consumer owns the initial and replacement catalogs plus the model-facing `skill` tool. Skills are optional instructions, not session events, so their vocabulary lives here rather than in [core.md](core.md). The separate [Community Skills marketplace](../../packages/skill/skill-marketplace) normalizes one configured SkillHub Registry Instance for browser discovery through `ctx.skillMarketplace`; it never contributes entries to `ctx.skills`, so discovery alone cannot make a Community entry invocable.
+The [skill capability family](../../packages/skill) includes the Service Definition ([dsh-skill](../../packages/skill/skill), `ctx.skills`), the local Service Provider ([dsh-skill-filesystem](../../packages/skill/skill-filesystem)), the optional packaged badge provider ([dsh-skill-badge](../../packages/skill/skill-badge)), the Host-owned managed-package store and provider ([dsh-skill-installation](../../packages/skill/skill-installation)), the Community Skills marketplace ([dsh-skill-marketplace](../../packages/skill/skill-marketplace)) for browser discovery, and the Consumer ([dsh-tool-skill](../../packages/skill/tool-skill)). The registry merges provider catalogs across its host and per-scope layers; providers contribute local or packaged skills; the Consumer owns the initial and replacement catalogs plus the model-facing `skill` tool. Skills are optional instructions, not session events, so their vocabulary lives here rather than in [core.md](core.md). The separate marketplace never contributes entries to `ctx.skills`; only the managed provider contributes enabled, verified installations.
 
-Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts), [`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts), [`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts), [`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts), and [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts).
+Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts), [`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts), [`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts), [`packages/skill/skill-installation/src/index.ts`](../../packages/skill/skill-installation/src/index.ts), [`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts), and [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts).
 
 ## Provider registry
 
@@ -83,6 +83,20 @@ Chokidar watches existing roots for direct bundle/flat-entry additions and remov
 ## Skill identity
 
 Skill names are kebab-case (`^[a-z0-9]+(?:-[a-z0-9]+)*$`). The local provider accepts directory bundles (`<name>/SKILL.md`) and flat Markdown files (`<name>.md`). Nested recursive `**/SKILL.md` discovery is not supported.
+
+## Managed package admission
+
+`ManagedSkillStore` is a Host-internal library, not a Cordis service. It accepts one exact resolved Community Skill release and complete ZIP bytes, validates the archive in a unique private staging directory, and publishes `content/` with `receipt.json` through one directory rename. `ManagedInstallationService` adds exact-version lifecycle operations above that store: install, update, enable, disable, and uninstall through Host-supplied identities, operation records, idempotency keys, and a resolver for operations that need remote bytes. `ManagedSkillProvider` reads verified receipts, contributes only enabled packages, and subscribes to lifecycle changes so `ctx.skills` invalidates after durable mutations.
+
+Admission accepts either `SKILL.md` at the archive root or one wrapper directory. It rejects absolute, drive-qualified, parent-traversing, backslash, Windows device and alternate-stream, duplicate portable, link, device, FIFO, mixed-root, and excessive entries; compressed bytes, declared expanded bytes, and decoded bytes all have explicit caller-supplied limits. Every regular file must match the Registry Instance path, size, and lowercase SHA-256 manifest. The SkillHub fingerprint is recomputed by sorting manifest paths and hashing one UTF-8 `path:sha256\n` row per file.
+
+The staged `SKILL.md` is parsed with `parseSkillDocument`, the same parser used by the filesystem provider, and its canonical name must match the resolved catalog name. A committed receipt records the Registry Instance id, remote namespace and slug, adapter, canonical source server, canonical name, exact version, verified manifest and fingerprint, install time, enabled state, and managed content location. Existing receipts, entry modes, and complete content file and directory sets are validated before an identical release is returned idempotently. A different remote identity cannot claim an already installed canonical name.
+
+Package files, the receipt, and the outer package directory become read-only before the final same-parent directory rename commits publication. Any earlier failure removes its unique private package. The storage format is versioned at `v1`; unsupported, writable, linked, missing, added, or content-modified durable entries fail as store corruption rather than being repaired or promoted.
+
+Lifecycle operation records live under `v1/operations/` and remain separate from package receipts. A running record reserves one caller-supplied idempotency key before the mutation starts, and an owner-pid target lock rejects same-target operations from another service instance while the owner is alive. A completed record carries the operation result and package target after the durable point. Repeating the same key for the same operation and target replays the completed result after restart; using that key for another operation or target fails as an idempotency-key conflict. A second live operation for the same target with a different key fails as in progress.
+
+Install admits one exact release. Update requires the source version to be installed, admits the target version, disables the source version, and then enables the new version. Enable and disable only rewrite the receipt state. Uninstall removes one exact package and stale operation records for that target, while its own completed record remains replayable. Startup recovery creates the private roots, deletes abandoned staging and `.admitting-*` directories, validates complete receipts and immutable content, removes stale running operation records and dead target locks, and keeps only completed operation records whose receipts still verify unless the operation is uninstall. Recovery never promotes partial package data. Lifecycle results expose receipt projections without the source server or managed content path.
 
 ```ts type-equiv
 /** Origin bucket for a skill contribution. The value is prompt-visible metadata, not precedence by itself. */
@@ -256,9 +270,25 @@ Host-side SkillHub adapter exposed through dsh-owned catalog types.
  * @returns dsh-owned catalog data; no SkillHub response object escapes.
  */
 async list(request: CommunitySkillListRequest = {}, signal?: AbortSignal): Promise<CommunitySkillPage>
+
+/**
+ * Inspect one exact Community Skill release.
+ * @param identity - configured Registry Instance and exact upstream release identity.
+ * @param signal - cancellation forwarded to every upstream request.
+ * @returns Host-normalized detail including the exact SKILL.md source.
+ */
+async get(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDetail>
+
+/**
+ * Stream one exact Community Skill artifact without changing local installation state.
+ * @param identity - configured Registry Instance and exact upstream release identity.
+ * @param signal - cancellation forwarded to every upstream request and body stream.
+ * @returns artifact metadata and upstream response stream.
+ */
+async download(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDownload>
 ```
 
-Source: [`packages/skill/skill-marketplace/src/index.ts:41`](../../packages/skill/skill-marketplace/src/index.ts)
+Source: [`packages/skill/skill-marketplace/src/index.ts:78`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

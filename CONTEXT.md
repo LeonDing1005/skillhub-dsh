@@ -20,6 +20,14 @@ _Avoid_: Remote Skill, available Skill
 A dsh-owned local copy of one exact Community Skill version, together with its enabled state and origin.
 _Avoid_: Downloaded Skill, Community Skill
 
+**Installation Operation**:
+A request-scoped record for one Managed Installation mutation and its idempotency result, distinct from the installation fact itself.
+_Avoid_: Installation state, receipt
+
+**Managed Skill Provider**:
+The `ctx.skills` provider that exposes only verified, enabled Managed Installations to the existing skill-resolution rules.
+_Avoid_: Managed registry, installed-skill provider
+
 **Personal Skill Inventory**:
 The union shown as "My Skills": Managed Installations plus project, user, custom, bundled, and runtime skills visible to dsh.
 _Avoid_: Installed Skills

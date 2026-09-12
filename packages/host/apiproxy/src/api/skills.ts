@@ -46,6 +46,7 @@ export interface CommunitySkillLabelEntry {
 export interface CommunitySkillListPayload {
   readonly query?: string
   readonly label?: string
+  readonly sort?: string
   readonly page?: number
   readonly pageSize?: number
 }
@@ -57,7 +58,60 @@ export interface CommunitySkillListValue {
   readonly total: number
   readonly page: number
   readonly pageSize: number
+  readonly freshness: 'fresh' | 'stale'
+  readonly lastSuccessfulAt?: string
 }
+
+/** Exact Community Skill release identity accepted by detail and download surfaces. */
+export interface CommunitySkillIdentityPayload {
+  readonly registryInstanceId: string
+  readonly namespace: string
+  readonly slug: string
+  readonly version: string
+}
+
+/** One exact release version available from the configured Registry Instance. */
+export interface CommunitySkillVersionEntry {
+  readonly version: string
+  readonly publishedAt?: string
+  readonly downloadAvailable: boolean
+}
+
+/** One file recorded in an exact Community Skill release. */
+export interface CommunitySkillFileEntry {
+  readonly path: string
+  readonly size: number
+  readonly contentType: string
+  readonly sha256: string
+}
+
+/** Exact Community Skill release detail projected onto the dsh wire. */
+export interface CommunitySkillDetailValue extends CommunitySkillIdentityPayload {
+  readonly canonicalName: string
+  readonly title: string
+  readonly description: string
+  readonly publisher: string
+  readonly starCount: number
+  readonly downloadCount: number
+  readonly publishedAt?: string
+  readonly examplePrompt?: string
+  readonly skillMarkdown: string
+  readonly versions: readonly CommunitySkillVersionEntry[]
+  readonly files: readonly CommunitySkillFileEntry[]
+  readonly installCommand: string
+}
+
+/** Safe projection of one managed installation; storage paths and source URLs stay Host-only. */
+export interface ManagedSkillInstallationEntry extends CommunitySkillIdentityPayload {
+  readonly canonicalName: string
+  readonly enabled: boolean
+  readonly installedAt: string
+  readonly fingerprint: string
+}
+/** Safe list projection for managed installations. */
+export interface ManagedSkillInstallationListValue { readonly items: readonly ManagedSkillInstallationEntry[] }
+/** Identity and caller-owned retry key for a lifecycle mutation. */
+export interface ManagedSkillInstallationMutationPayload extends CommunitySkillIdentityPayload { readonly idempotencyKey: string }
 
 /**
  * Skill-domain unary methods (the map key skill.* of RpcMethodMap). Listing
@@ -71,4 +125,16 @@ export interface SkillsApi {
   list(request: RpcRequest<{ sessionId: SessionId }>): Promise<RpcResponse<{ skills: readonly SkillEntry[] }>>
   /** Lists normalized discovery-only entries from the configured Community Registry Instance. */
   communityList(request: RpcRequest<CommunitySkillListPayload>, signal?: AbortSignal): Promise<RpcResponse<CommunitySkillListValue>>
+  /** Loads one exact Community Skill release from the configured Registry Instance. */
+  communityGet(request: RpcRequest<CommunitySkillIdentityPayload>, signal?: AbortSignal): Promise<RpcResponse<CommunitySkillDetailValue>>
+  installationList?(request: RpcRequest<Record<string, never>>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationListValue>>
+  installationInstall?(request: RpcRequest<ManagedSkillInstallationMutationPayload>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationEntry>>
+  installationUpdate?(request: RpcRequest<ManagedSkillInstallationMutationPayload & { fromVersion: string }>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationEntry>>
+  installationSetEnabled?(request: RpcRequest<ManagedSkillInstallationMutationPayload & { enabled: boolean }>, signal?: AbortSignal):
+  Promise<RpcResponse<ManagedSkillInstallationEntry>>
+  installationUninstall?(request: RpcRequest<ManagedSkillInstallationMutationPayload>, signal?: AbortSignal):
+  Promise<RpcResponse<{ removed: boolean }>>
 }

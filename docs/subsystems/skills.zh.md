@@ -2,9 +2,9 @@
 
 [English](skills.md) | 中文
 
-[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。独立的[社区技能 marketplace](../../packages/skill/skill-marketplace) 通过 `ctx.skillMarketplace` 标准化一个已配置的 SkillHub Registry Instance，供浏览器发现；它绝不向 `ctx.skills` 贡献条目，因此仅发现社区条目不会使其变得可调用。
+[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）、Host 所有的托管包存储与 provider（[dsh-skill-installation](../../packages/skill/skill-installation)）、用于浏览器发现的社区技能 marketplace（[dsh-skill-marketplace](../../packages/skill/skill-marketplace)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。独立的 marketplace 不会向 `ctx.skills` 贡献条目；只有 managed provider 会贡献已启用且已验证的安装。
 
-源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts)、[`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
+源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts)、[`packages/skill/skill-installation/src/index.ts`](../../packages/skill/skill-installation/src/index.ts)、[`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
 
 ## 提供方注册表
 
@@ -83,6 +83,20 @@ Chokidar 会监视现有根目录中直属 bundle 和平铺条目的添加与移
 ## skill 身份
 
 skill 名称为 kebab-case（`^[a-z0-9]+(?:-[a-z0-9]+)*$`）。本地提供方接受目录包（`<name>/SKILL.md`）和扁平 Markdown 文件（`<name>.md`）。嵌套递归的 `**/SKILL.md` 发现不受支持。
+
+## 托管包准入
+
+`ManagedSkillStore` 是 Host 内部库，不是 Cordis 服务。它接收一个精确解析的 Community Skill 发布版本及完整 ZIP 字节，在唯一的私有暂存目录中验证归档，并通过一次目录重命名同时发布 `content/` 与 `receipt.json`。`ManagedInstallationService` 在该存储之上加入精确版本生命周期操作：通过 Host 提供的身份、操作记录、幂等键，以及需要远程字节的操作所用的 resolver，执行安装、更新、启用、禁用和卸载。`ManagedSkillProvider` 读取已验证 receipt，只贡献已启用的包，并订阅生命周期变化，使 `ctx.skills` 在持久变更后失效。
+
+准入接受归档根目录中的 `SKILL.md`，或外包一层目录的包。它拒绝绝对路径、带盘符路径、父目录穿越、反斜杠路径、Windows 设备名与备用数据流名称、可移植名称重复、链接、设备、FIFO、混合根目录及过多条目；压缩字节数、声明的展开字节数和实际解码字节数均受调用方显式提供的限制约束。每个普通文件都必须匹配 Registry Instance 清单中的路径、大小和小写 SHA-256。SkillHub 指纹通过对清单路径排序，并对每个文件的一行 UTF-8 `path:sha256\n` 进行哈希来重新计算。
+
+暂存的 `SKILL.md` 通过文件系统提供方使用的同一个 `parseSkillDocument` 解析，其规范名称必须匹配解析后的目录名称。已提交收据记录 Registry Instance id、远程 namespace 与 slug、适配器、规范源服务器、规范名称、精确版本、已验证清单与指纹、安装时间、启用状态和托管内容位置。返回相同发布版本的幂等结果前，会验证已有收据、条目 mode 以及完整的内容文件与目录集合。不同远程身份不能占用已安装的同一规范名称。
+
+包文件、收据与最外层包目录在最后一次同父目录重命名提交发布前变为只读。此前的任何失败都会删除其唯一私有包。存储格式位于版本目录 `v1`；不受支持、可写、链接、缺失、新增或内容被修改的持久化条目会作为存储损坏失败，不会被修复或提升为有效安装。
+
+生命周期操作记录位于 `v1/operations/`，并与包 receipt 分开。running 记录会在变更开始前保留一个由调用方提供的幂等键，owner-pid 目标锁会在所有者仍存活时拒绝另一服务实例的同目标操作。completed 记录会在持久点之后携带操作结果和包目标。对同一操作和目标重复使用同一键时，重启后会重放已完成结果；把该键用于另一操作或目标会作为幂等键冲突失败。对同一目标使用不同键的第二个 live 操作会作为正在进行失败。
+
+安装会准入一个确切发布版本。更新要求源版本已经安装，然后准入目标版本、禁用源版本，并启用新版本。启用和禁用只重写 receipt 状态。卸载会删除一个确切包及其目标的过期操作记录，同时保留自身可重放的 completed 记录。启动恢复会创建私有根目录，删除遗留 staging 与 `.admitting-*` 目录，验证完整 receipt 和不可变内容，移除过期 running 操作记录和死亡目标锁，并只保留 receipt 仍能验证的 completed 操作记录，卸载操作除外。恢复绝不会提升部分包数据。生命周期结果公开的 receipt 投影不包含源服务器或托管内容路径。
 
 ```ts type-equiv
 /** Origin bucket for a skill contribution. The value is prompt-visible metadata, not precedence by itself. */
@@ -256,9 +270,25 @@ Host-side SkillHub adapter exposed through dsh-owned catalog types.
  * @returns dsh-owned catalog data; no SkillHub response object escapes.
  */
 async list(request: CommunitySkillListRequest = {}, signal?: AbortSignal): Promise<CommunitySkillPage>
+
+/**
+ * Inspect one exact Community Skill release.
+ * @param identity - configured Registry Instance and exact upstream release identity.
+ * @param signal - cancellation forwarded to every upstream request.
+ * @returns Host-normalized detail including the exact SKILL.md source.
+ */
+async get(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDetail>
+
+/**
+ * Stream one exact Community Skill artifact without changing local installation state.
+ * @param identity - configured Registry Instance and exact upstream release identity.
+ * @param signal - cancellation forwarded to every upstream request and body stream.
+ * @returns artifact metadata and upstream response stream.
+ */
+async download(identity: CommunitySkillIdentity, signal?: AbortSignal): Promise<CommunitySkillDownload>
 ```
 
-Source: [`packages/skill/skill-marketplace/src/index.ts:41`](../../packages/skill/skill-marketplace/src/index.ts)
+Source: [`packages/skill/skill-marketplace/src/index.ts:78`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

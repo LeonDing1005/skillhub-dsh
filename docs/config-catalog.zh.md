@@ -1914,10 +1914,24 @@ export interface Config {
   baseUrl: string
   /** Maximum catalog items accepted per request. */
   pageSizeLimit?: number
+  /** Age below which a successful list result is returned without revalidation. */
+  freshTtlMs?: number
+  /** Maximum age at which a successful result may cover an upstream outage. */
+  staleTtlMs?: number
+  /** Number of local retries after an HTTP 429 response, from zero through ten. */
+  rateLimitRetries?: number
+  /** Initial delay for exponential HTTP 429 retry. */
+  rateLimitBackoffMs?: number
+  /** Maximum UTF-8 bytes accepted from an exact release SKILL.md. */
+  skillMarkdownMaxBytes?: number
+  /** Maximum published versions accepted for one Community Skill. */
+  versionCountLimit?: number
+  /** Maximum central-directory bytes accepted from an exact release ZIP. */
+  zipDirectoryMaxBytes?: number
 }
 ```
 
-来源：[`packages/skill/skill-marketplace/src/index.ts:25`](../packages/skill/skill-marketplace/src/index.ts)
+来源：[`packages/skill/skill-marketplace/src/index.ts:47`](../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -3164,6 +3178,7 @@ export interface Config {
 - `@deepseek-ai/dsh-sdk-protocol`（[`packages/sdk/protocol/src/index.ts`](../packages/sdk/protocol/src/index.ts)）
 - `@deepseek-ai/dsh-session-telemetry`（[`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts)）
 - `@deepseek-ai/dsh-session-title-llm`（[`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts)）
+- `@deepseek-ai/dsh-skill-installation`（[`packages/skill/skill-installation/src/index.ts`](../packages/skill/skill-installation/src/index.ts)）
 - `@deepseek-ai/dsh-subagent-in-process-driver`（[`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts)）
 - `@deepseek-ai/dsh-timeout`（[`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts)）
 - `@deepseek-ai/dsh-typert-generator`（[`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts)）

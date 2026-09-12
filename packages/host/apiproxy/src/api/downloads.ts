@@ -6,6 +6,7 @@
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { CommunitySkillIdentityPayload } from './skills.ts'
 
 /** Host-only download surfaces (no wire envelope; absent from IApiClient). */
 export interface DownloadsApi {
@@ -22,4 +23,11 @@ export interface DownloadsApi {
     request: { sessionId: SessionId; includeDescendants?: boolean },
     signal: AbortSignal,
   ): Promise<Response>
+  /**
+   * Stream one Host-verified exact Community Skill artifact.
+   * @param request - configured Registry Instance and exact release identity.
+   * @param signal - cancellation for upstream requests and the response stream.
+   * @returns attachment response without changing local installation state.
+   */
+  communitySkill(request: CommunitySkillIdentityPayload, signal: AbortSignal): Promise<Response>
 }

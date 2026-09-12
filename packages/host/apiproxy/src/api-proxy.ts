@@ -22,6 +22,8 @@ import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-se
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
+import { registryInstanceId as managedRegistryInstanceId } from '@deepseek-ai/dsh-skill-installation'
+import type { CommunitySkillIdentity, ManagedInstallationService, ManagedSkillInstallReceipt } from '@deepseek-ai/dsh-skill-installation'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
@@ -40,8 +42,12 @@ import type {
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
+  WorkspaceId, WorkspaceView, CommunitySkillIdentityPayload, ManagedSkillInstallationEntry,
 } from './api/index.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { managedInstallation?: ManagedInstallationService }
+}
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   flushLiveSessionLog,
@@ -76,7 +82,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-cordis-host-runner/types'
 import type {} from '@deepseek-ai/dsh-skill'
 // Type-only: resolves the optional Host marketplace service.
-import type {} from '@deepseek-ai/dsh-skill-marketplace'
+import { registryInstanceId } from '@deepseek-ai/dsh-skill-marketplace'
 // The settings/credentials seams: brand guards run at this wire boundary; the
 // service reads stay optional (`ctx.get`) so a composition without either
 // provider still serves every other domain.
@@ -111,6 +117,27 @@ import {
   inspectApiRemoteSession,
 } from '@deepseek-ai/dsh-api-remotes'
 import { canOpenNativePath, openNativePath, openNativeTextFile } from './native-path-opener.ts'
+
+function managedIdentity(payload: CommunitySkillIdentityPayload): CommunitySkillIdentity {
+  return {
+    registryInstanceId: managedRegistryInstanceId(payload.registryInstanceId),
+    namespace: payload.namespace,
+    slug: payload.slug,
+  }
+}
+
+function managedInstallationView(receipt: ManagedSkillInstallReceipt): ManagedSkillInstallationEntry {
+  return {
+    registryInstanceId: String(receipt.identity.registryInstanceId),
+    namespace: receipt.identity.namespace,
+    slug: receipt.identity.slug,
+    version: receipt.version,
+    canonicalName: receipt.canonicalName,
+    enabled: receipt.enabled,
+    installedAt: receipt.installedAt,
+    fingerprint: receipt.fingerprint,
+  }
+}
 
 /** Page size when history is called without maxMessages. */
 const DEFAULT_MAX_MESSAGES = 50
@@ -3288,16 +3315,150 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             total: page.total,
             page: page.page,
             pageSize: page.pageSize,
+            freshness: page.freshness,
+            ...(page.lastSuccessfulAt === undefined ? {} : { lastSuccessfulAt: page.lastSuccessfulAt }),
           })
         } catch (error: unknown) {
           if (signal?.aborted === true) {
             return err(request, { code: 'cancelled', message: 'Community Skills listing was aborted', details: {} })
+          }
+          if (
+            error instanceof Error
+            && 'code' in error
+            && (error.code === 'SKILL_MARKETPLACE_UPSTREAM' || error.code === 'SKILL_MARKETPLACE_UNAVAILABLE')
+          ) {
+            return err(request, {
+              code: 'skill-marketplace-unavailable',
+              message: 'Community Skills is temporarily unavailable',
+              details: {},
+            })
           }
           return err(request, {
             code: 'internal',
             message: `Community Skills listing failed: ${String(error)}`,
             details: {},
           })
+        }
+      },
+
+      async communityGet(request, signal) {
+        const marketplace = ctx.get('skillMarketplace')
+        if (marketplace === undefined) {
+          return err(request, {
+            code: 'internal',
+            message: 'Community Skills is unavailable: the Host has no configured Skill Marketplace',
+            details: {},
+          })
+        }
+        try {
+          const detail = await marketplace.get({
+            ...request.payload,
+            registryInstanceId: registryInstanceId(request.payload.registryInstanceId),
+          }, signal)
+          return ok(request, {
+            registryInstanceId: String(detail.identity.registryInstanceId),
+            namespace: detail.identity.namespace,
+            slug: detail.identity.slug,
+            version: detail.identity.version,
+            canonicalName: detail.canonicalName,
+            title: detail.title,
+            description: detail.description,
+            publisher: detail.publisher,
+            starCount: detail.starCount,
+            downloadCount: detail.downloadCount,
+            ...(detail.publishedAt === undefined ? {} : { publishedAt: detail.publishedAt }),
+            ...(detail.examplePrompt === undefined ? {} : { examplePrompt: detail.examplePrompt }),
+            skillMarkdown: detail.skillMarkdown,
+            versions: detail.versions.map(version => ({
+              version: version.version,
+              ...(version.publishedAt === undefined ? {} : { publishedAt: version.publishedAt }),
+              downloadAvailable: version.downloadAvailable,
+            })),
+            files: detail.files.map(file => ({ ...file })),
+            installCommand: detail.installCommand,
+          })
+        } catch (_error: unknown) {
+          if (signal?.aborted === true) {
+            return err(request, { code: 'cancelled', message: 'Community Skill detail request was aborted', details: {} })
+          }
+          return err(request, {
+            code: 'skill-marketplace-unavailable',
+            message: 'Community Skill detail is temporarily unavailable',
+            details: {},
+          })
+        }
+      },
+      async installationList(request) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const items = (await service.listReceipts()).map(managedInstallationView)
+          return ok(request, { items })
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: `Managed Skill installation listing failed: ${String(error)}`, details: {} })
+        }
+      },
+      async installationInstall(request, signal) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = await service.install({
+            identity: managedIdentity(request.payload),
+            version: request.payload.version,
+            idempotencyKey: request.payload.idempotencyKey,
+          }, signal)
+          return ok(request, managedInstallationView(result.receipt))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
+        }
+      },
+      async installationUpdate(request, signal) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = await service.update({
+            identity: managedIdentity(request.payload),
+            fromVersion: request.payload.fromVersion,
+            toVersion: request.payload.version,
+            idempotencyKey: request.payload.idempotencyKey,
+          }, signal)
+          return ok(request, managedInstallationView(result.receipt))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
+        }
+      },
+      async installationSetEnabled(request) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = request.payload.enabled
+            ? await service.enable({
+              identity: managedIdentity(request.payload),
+              version: request.payload.version,
+              idempotencyKey: request.payload.idempotencyKey,
+            })
+            : await service.disable({
+              identity: managedIdentity(request.payload),
+              version: request.payload.version,
+              idempotencyKey: request.payload.idempotencyKey,
+            })
+          return ok(request, managedInstallationView(result.receipt))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
+        }
+      },
+      async installationUninstall(request) {
+        const service = ctx.get('managedInstallation')
+        if (service === undefined) return err(request, { code: 'internal', message: 'Managed Skill installation is unavailable', details: {} })
+        try {
+          const result = await service.uninstall({
+            identity: managedIdentity(request.payload),
+            version: request.payload.version,
+            idempotencyKey: request.payload.idempotencyKey,
+          })
+          return ok(request, { removed: result.removed })
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: String(error), details: {} })
         }
       },
     },
@@ -3682,6 +3843,27 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     },
 
     downloads: {
+      async communitySkill(request, signal) {
+        const marketplace = ctx.get('skillMarketplace')
+        if (marketplace === undefined) return new Response('Community Skill download is unavailable', { status: 503 })
+        try {
+          const artifact = await marketplace.download({
+            ...request,
+            registryInstanceId: registryInstanceId(request.registryInstanceId),
+          }, signal)
+          return new Response(artifact.body, {
+            headers: {
+              'content-type': artifact.contentType,
+              'content-disposition': `attachment; filename="${artifact.filename}"`,
+              ...(artifact.contentLength === undefined ? {} : { 'content-length': String(artifact.contentLength) }),
+            },
+          })
+        } catch {
+          signal.throwIfAborted()
+          return new Response('Community Skill download failed', { status: 502 })
+        }
+      },
+
       async sessionLog(request, signal) {
         // Clean error path first: missing services answer 500 and a missing
         // root artifact 404 before any zip byte is produced. The root content

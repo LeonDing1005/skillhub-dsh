@@ -2817,7 +2817,27 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         total: 3,
         page: 0,
         pageSize: 12,
+        freshness: 'fresh',
       }),
+      communityGet: request => ok(request, {
+        ...request.payload,
+        canonicalName: request.payload.slug,
+        title: request.payload.slug === 'weather' ? 'Weather' : request.payload.slug,
+        description: 'Fixture exact Community Skill release.',
+        publisher: 'Built-in Skill Publisher',
+        starCount: 128,
+        downloadCount: 4820,
+        examplePrompt: 'Show a concise example for this skill.',
+        skillMarkdown: `# ${request.payload.slug}\n\nFixture SKILL.md preview.`,
+        versions: [{ version: request.payload.version, downloadAvailable: true }],
+        files: [{ path: 'SKILL.md', size: 42, contentType: 'text/markdown', sha256: 'fixture-sha256' }],
+        installCommand: `skillhub install ${request.payload.slug} --namespace ${request.payload.namespace} --version ${request.payload.version}`,
+      }),
+      installationList: request => ok(request, { items: [] }),
+      installationInstall: request => err(request, { code: 'internal', message: 'fixture managed installation unavailable', details: {} }),
+      installationUpdate: request => err(request, { code: 'internal', message: 'fixture managed installation unavailable', details: {} }),
+      installationSetEnabled: request => err(request, { code: 'internal', message: 'fixture managed installation unavailable', details: {} }),
+      installationUninstall: request => ok(request, { removed: false }),
     },
     goals: {
       // Compatibility face only: old API Proxy payloads and acknowledgements
@@ -3028,6 +3048,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     // hands GET /api/session.export to the native download manager, so this
     // stub is never reached through the fixture's dispatch.
     downloads: {
+      communitySkill: () => Promise.resolve(new Response('fixture mode does not serve Community Skill downloads', { status: 404 })),
       sessionLog: () => Promise.resolve(new Response('fixture mode does not serve session export', { status: 404 })),
     },
   }
@@ -3144,6 +3165,12 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
       case 'skill.communityList': return this.api.skills.communityList(request, signal)
+      case 'skill.communityGet': return this.api.skills.communityGet(request, signal)
+      case 'skill.installationList': return this.api.skills.installationList?.(request, signal) ?? Promise.reject(new Error('managed installation RPC unavailable'))
+      case 'skill.installationInstall': return this.api.skills.installationInstall?.(request, signal) ?? Promise.reject(new Error('managed installation RPC unavailable'))
+      case 'skill.installationUpdate': return this.api.skills.installationUpdate?.(request, signal) ?? Promise.reject(new Error('managed installation RPC unavailable'))
+      case 'skill.installationSetEnabled': return this.api.skills.installationSetEnabled?.(request, signal) ?? Promise.reject(new Error('managed installation RPC unavailable'))
+      case 'skill.installationUninstall': return this.api.skills.installationUninstall?.(request, signal) ?? Promise.reject(new Error('managed installation RPC unavailable'))
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)
       case 'agentPreset.read': return this.api.agentPresets.read(request)

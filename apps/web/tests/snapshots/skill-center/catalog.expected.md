@@ -4,11 +4,21 @@
   - tablist:
     - tab "Community Skills" [selected]
     - tab "My Skills" [disabled]
+  - img
+  - searchbox "Search Community Skills"
+  - combobox "Sort Community Skills":
+    - option "Newest" [selected]
+    - option "Most downloaded"
+    - option "Most starred"
+  - button "All" [pressed]
+  - button "Utilities"
   - article:
+    - button "View details for weather"
     - img
     - text: global/weather
     - heading "weather" [level=2]
     - paragraph: Retrieve and summarize current weather and forecasts for locations, rain, temperature, and travel planning using an available web tool or wttr.in over HTTPS.
-    - text: Built-in Skill Publisher v1.0.0 0 stars
+    - text: Built-in Skill Publisher utilities v1.0.0 0 stars
     - img
     - text: "0"
+  - button "Load more"

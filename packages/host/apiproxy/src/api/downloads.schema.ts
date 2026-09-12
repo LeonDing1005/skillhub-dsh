@@ -9,6 +9,7 @@
 import { z } from 'zod'
 import type { DownloadsApi } from './downloads.ts'
 import { sessionIdSchema } from './sessions.schema.ts'
+import { skillCommunityIdentitySchema } from './skills.schema.ts'
 
 /**
  * session.export query params → the sessionLog request. `includeDescendants`
@@ -24,3 +25,6 @@ export const sessionLogQuerySchema = z
     sessionId: query.sessionId,
     ...(query.includeDescendants === 'true' ? { includeDescendants: true } : {}),
   })) satisfies z.ZodType<Parameters<DownloadsApi['sessionLog']>[0]>
+
+/** skill.download query params for one exact Community Skill release. */
+export const communitySkillDownloadQuerySchema = skillCommunityIdentitySchema satisfies z.ZodType<Parameters<DownloadsApi['communitySkill']>[0]>

@@ -4,7 +4,7 @@ import type { AttachmentIdType } from '@deepseek-ai/dsh-attachment'
 import { createScope, scopeOf, SessionProvideChannel } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
-  AgentContext, ConversationSnapshot, ISessions, ObservableSnapshot, ProjectionsFace, SessionFace, SessionId,
+  AgentContext, ConversationSnapshot, ISessions, ObservableSnapshot, ProjectionsFace, SessionFace, SessionId, WorkspaceId,
   SessionListState, SessionProvideDescriptor, SessionSearchResultItem, SessionSummary, SnapshotStore,
   SubagentAddress,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -184,7 +184,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
+    method: 'create' | 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
       | 'clear' | 'search' | 'fork'
     args: unknown[]
   }[] = []
@@ -217,6 +217,24 @@ export class TestSessions implements ISessions {
     this.currentProvideInfo = this.channel.currentProvideInfo
     // The projection follows every current write, as in production.
     this.list.subscribe(() => { this.channel.publishCurrent() })
+  }
+
+  /**
+   * Materialize a blank fixture session, mirroring the production service's
+   * synchronous-addressability guarantee after `session.create` resolves.
+   * @param opts - optional workspace, working directory, and caller-owned id.
+   * @returns the created session id.
+   */
+  async create(opts: { workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId } = {}): Promise<SessionId> {
+    void opts.workspaceId
+    const requested = opts.sessionId
+    const id = requested ?? (`created-${this.records.size + 1}` as SessionId)
+    await this.add({
+      id,
+      summary: { blank: true, ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }) },
+    }, { current: false })
+    this.calls.push({ method: 'create', args: [opts] })
+    return id
   }
 
   /**

@@ -194,8 +194,22 @@ export class FakeApiClient implements IApiClient {
   readonly skills: IApiClient['skills'] = {
     list: (payload: unknown) => this.record('skill.list', payload, this.onSkillList(payload)),
     communityList: (payload: unknown) => this.record('skill.communityList', payload, Promise.resolve(ok({
-      items: [], labels: [], total: 0, page: 0, pageSize: 12,
+      items: [], labels: [], total: 0, page: 0, pageSize: 12, freshness: 'fresh',
     }))),
+    communityGet: (payload: { registryInstanceId: string; namespace: string; slug: string; version: string }) =>
+      this.record('skill.communityGet', payload, Promise.resolve(ok({
+        ...payload,
+        canonicalName: payload.slug,
+        title: payload.slug,
+        description: '',
+        publisher: payload.namespace,
+        starCount: 0,
+        downloadCount: 0,
+        skillMarkdown: '',
+        versions: [],
+        files: [],
+        installCommand: `skillhub install ${payload.slug} --namespace ${payload.namespace} --version ${payload.version}`,
+      }))),
   }
 
   readonly goals: IApiClient['goals'] = {

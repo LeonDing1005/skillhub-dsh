@@ -31,6 +31,46 @@ export interface CommunitySkillSummary {
   readonly isNew: boolean
 }
 
+/** One published version listed for a Community Skill. */
+export interface CommunitySkillVersion {
+  readonly version: string
+  readonly publishedAt?: string
+  readonly downloadAvailable: boolean
+}
+
+/** One file recorded in an exact Community Skill release. */
+export interface CommunitySkillFile {
+  readonly path: string
+  readonly size: number
+  readonly contentType: string
+  readonly sha256: string
+}
+
+/** Host-normalized detail for one exact Community Skill release. */
+export interface CommunitySkillDetail {
+  readonly identity: CommunitySkillIdentity
+  readonly canonicalName: string
+  readonly title: string
+  readonly description: string
+  readonly publisher: string
+  readonly starCount: number
+  readonly downloadCount: number
+  readonly publishedAt?: string
+  readonly examplePrompt?: string
+  readonly skillMarkdown: string
+  readonly versions: readonly CommunitySkillVersion[]
+  readonly files: readonly CommunitySkillFile[]
+  readonly installCommand: string
+}
+
+/** Exact release artifact streamed by the Host without installing it. */
+export interface CommunitySkillDownload {
+  readonly filename: string
+  readonly contentType: string
+  readonly contentLength?: number
+  readonly body: ReadableStream<Uint8Array>
+}
+
 /** One Registry Instance category visible in Community Skills. */
 export interface CommunitySkillLabel {
   readonly slug: string
@@ -41,6 +81,7 @@ export interface CommunitySkillLabel {
 export interface CommunitySkillListRequest {
   readonly query?: string
   readonly label?: string
+  readonly sort?: string
   readonly page?: number
   readonly pageSize?: number
 }
@@ -52,4 +93,6 @@ export interface CommunitySkillPage {
   readonly total: number
   readonly page: number
   readonly pageSize: number
+  readonly freshness: 'fresh' | 'stale'
+  readonly lastSuccessfulAt?: string
 }

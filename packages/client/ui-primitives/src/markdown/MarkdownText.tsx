@@ -30,6 +30,7 @@ function renderSettled(
   text: string,
   codeLabels: MarkdownCodeLabels | undefined,
   fileMentions: MarkdownFileMentions | undefined,
+  allowRemoteImages: boolean,
 ): ReactNode[] {
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
@@ -38,6 +39,7 @@ function renderSettled(
     streaming: false,
     codeLabels,
     fileMentions,
+    allowRemoteImages,
     targets,
     footnoteOrder: [],
     footnoteCounts: new Map(),
@@ -149,28 +151,29 @@ class StreamingRenderer {
  * the single streaming gate — it applies to settled renders only, because a
  * streaming message's vocabulary is not final and frozen cached elements
  * must not bake in handlers that could go stale.
+ * `allowRemoteImages=false` renders image alt text without issuing a request.
  * @returns A GFM document with TeX math rendered through KaTeX; raw HTML,
- * relative links, and unsafe protocols are disabled, while absolute HTTP(S)
- * images render directly.
+ * relative links, and unsafe protocols are disabled.
  */
-export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions }: {
+export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions, allowRemoteImages = true }: {
   text: string
   streaming?: boolean
   codeLabels?: MarkdownCodeLabels | undefined
   fileMentions?: MarkdownFileMentions | undefined
+  allowRemoteImages?: boolean
 }) {
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownCodeLabels | undefined>(codeLabels)
   const children = useMemo(() => {
     if (!streaming) {
       streamRef.current = null
-      return renderSettled(text, codeLabels, fileMentions)
+      return renderSettled(text, codeLabels, fileMentions, allowRemoteImages)
     }
     if (streamRef.current === null || streamLabelsRef.current !== codeLabels) {
       streamRef.current = new StreamingRenderer(codeLabels)
       streamLabelsRef.current = codeLabels
     }
     return streamRef.current.render(text)
-  }, [text, streaming, codeLabels, fileMentions])
+  }, [text, streaming, codeLabels, fileMentions, allowRemoteImages])
   return <div className={css.markdown}>{children}</div>
 })

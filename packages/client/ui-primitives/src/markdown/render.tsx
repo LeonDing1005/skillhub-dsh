@@ -125,6 +125,8 @@ export interface MarkdownRenderContext {
   readonly codeLabels: MarkdownCodeLabels | undefined
   /** Inline-code file mentions; absent wherever no opener vocabulary exists. */
   readonly fileMentions: MarkdownFileMentions | undefined
+  /** Whether absolute HTTP(S) images may create network requests. */
+  readonly allowRemoteImages?: boolean
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean
   /** Reference targets visible to this pass. */
@@ -279,8 +281,11 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'linkReference':
       return renderLinkReference(node, key, context)
     case 'image':
-      return renderImage(node.url, node.alt ?? '', key)
+      return context.allowRemoteImages === false
+        ? <span key={key} className={css.imageAlt}>{node.alt ?? ''}</span>
+        : renderImage(node.url, node.alt ?? '', key)
     case 'imageReference':
+      if (context.allowRemoteImages === false) return <span key={key} className={css.imageAlt}>{node.alt ?? ''}</span>
       return renderImageReference(node, key, context)
     case 'footnoteReference':
       return renderFootnoteReference(node, key, context)
