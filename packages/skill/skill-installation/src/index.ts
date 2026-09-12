@@ -67,6 +67,7 @@ export type {
   VerifiedSkillFile,
 } from './types.ts'
 
+/** Stable provider name used for managed Community Skill candidates. */
 export const MANAGED_SKILL_PROVIDER_NAME = 'managed'
 const MANAGED_SKILL_RANK = 550
 
@@ -339,13 +340,20 @@ export class ManagedInstallationService {
     this.now = options.now ?? (() => new Date())
   }
 
-  /** Subscribe to durable installation changes so a managed provider can invalidate its catalog. */
+  /**
+   * Subscribe to durable installation changes so a managed provider can invalidate its catalog.
+   * @param listener - callback invoked after a lifecycle result is durable.
+   * @returns a disposer that removes the listener.
+   */
   onChange(listener: () => void): () => void {
     this.changeListeners.add(listener)
     return () => { this.changeListeners.delete(listener) }
   }
 
-  /** Read verified receipts for provider discovery. */
+  /**
+   * Read verified receipts for provider discovery.
+   * @returns the currently valid managed installation receipts.
+   */
   async listReceipts(): Promise<readonly ManagedSkillReceipt[]> {
     await this.ensureReady()
     return await this.store.listReceipts()
@@ -687,7 +695,7 @@ export class ManagedSkillProvider implements SkillProvider {
 }
 
 /** Register a managed installation provider on an existing skill registry. */
-export function apply(ctx: Context, service: ManagedInstallationService): () => void {
+export const apply = (ctx: Context, service: ManagedInstallationService): (() => void) => {
   return ctx.skills.registerProvider(control => new ManagedSkillProvider(service, control))
 }
 

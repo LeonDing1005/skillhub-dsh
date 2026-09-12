@@ -77,11 +77,11 @@ receipt 记录 Registry Instance 与远程身份、adapter 与源服务器、规
 
 ## 模型体验
 
-已启用的 managed 包会出现在现有 `ctx.skills` catalog 中，并通过与其他 provider 相同的 skill 工具和显式调用路径加载。禁用或卸载的包不会出现；项目和 scoped runtime 的优先级仍由 `dsh-skill` 负责。
+无，因为已启用的 managed 包通过现有 skill 工具加载，而此包不会组装模型输入。
 
 #### KV Cache 影响
 
-无；此包不会组装模型输入。
+无；此包不会组装或发送 provider 请求。
 
 ## 已知限制与推迟的工作
 

@@ -1,10 +1,24 @@
 # Agent Note：Managed Skill Provider
 
+Status: implemented
+
 [English](2026-08-29-managed-skill-provider.md) | 中文
 
-托管安装包现在导出 `ManagedSkillProvider` 与 `apply(ctx, service)`。Provider 只列出 `enabled` 为 true 的 receipt，并使用共享文件系统解析器加载已验证的 `content/SKILL.md`。候选项使用低于 bundled skill 的 managed rank 和 opaque resource base；源服务器元数据与 Host 路径不会进入 `SkillCandidate` 或 `SkillDefinition`。
+## Problem
 
-`ManagedInstallationService.onChange()` 是失效通知 seam。生命周期操作仅在 completed 操作记录持久化后通知监听者，使 `ctx.skills` 可以失效 catalog，同时不向 consumer 暴露生命周期内部。Host 负责构造 service 并注册 provider；RPC 与 Web 接线留给后续 ticket。
+托管 Community Skill 包需要进入面向模型的 skill registry，同时不能把 receipt、源服务器元数据或 Host 存储路径暴露给 consumer。
+
+## Decision
+
+托管安装包导出 `ManagedSkillProvider` 与 `apply(ctx, service)`。Provider 只列出 `enabled` 为 true 的 receipt，并使用共享文件系统解析器加载已验证的 `content/SKILL.md`。候选项使用低于 bundled skill 的 managed rank 和 opaque resource base；源服务器元数据与 Host 路径不会进入 `SkillCandidate` 或 `SkillDefinition`。
+
+`ManagedInstallationService.onChange()` 是失效通知 seam。生命周期操作仅在 completed 操作记录持久化后通知监听者，使 `ctx.skills` 可以失效 catalog，同时不向 consumer 暴露生命周期内部。Host 负责构造 service 并注册 provider；RPC 与 Web 接线留给包外职责。
+
+## Alternatives considered
+
+**直接向 registry 暴露托管 receipt。** 否决，因为 registry consumer 会依赖 Host 专属存储和远程元数据，而不是已验证的 skill 文档。
+
+**让 provider 轮询安装存储。** 否决，因为轮询可能产生过期 catalog；持久化变更通知为 registry 提供明确的失效点。
 
 ## 影响
 

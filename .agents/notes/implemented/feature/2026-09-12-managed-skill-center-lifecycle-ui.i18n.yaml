@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-12-managed-skill-center-lifecycle-ui.md
-2026-09-12-managed-skill-center-lifecycle-ui.md: 13d72cc776becc9eba81faf4953f9077e66b86b5
-2026-09-12-managed-skill-center-lifecycle-ui.zh.md: 1929e7ef026df9204550e49b5c6719125f65667d
+2026-09-12-managed-skill-center-lifecycle-ui.md: ed4d3acb3884a9b6c46a032b64edb3dd841efbd2
+2026-09-12-managed-skill-center-lifecycle-ui.zh.md: 2cf33e65c655654183f9d33275f1a633c44db280

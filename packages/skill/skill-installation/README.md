@@ -77,11 +77,11 @@ Startup recovery creates the private roots, removes abandoned staging directorie
 
 ## Model Experience
 
-Enabled managed packages appear in the existing `ctx.skills` catalog and are loaded through the same skill tool and invocation paths as other providers. Disabled or uninstalled packages are absent; project and scoped runtime precedence remains owned by `dsh-skill`.
+None, as enabled managed packages are loaded through the existing skill tools while this package never assembles model input.
 
 #### KV Cache effect
 
-None; this package never assembles model input.
+None; this package never assembles or sends a provider request.
 
 ## Known Limitations and Deferred Work
 

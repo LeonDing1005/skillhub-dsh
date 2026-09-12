@@ -108,7 +108,9 @@ export interface ManagedSkillInstallationEntry extends CommunitySkillIdentityPay
   readonly installedAt: string
   readonly fingerprint: string
 }
+/** Safe list projection for managed installations. */
 export interface ManagedSkillInstallationListValue { readonly items: readonly ManagedSkillInstallationEntry[] }
+/** Identity and caller-owned retry key for a lifecycle mutation. */
 export interface ManagedSkillInstallationMutationPayload extends CommunitySkillIdentityPayload { readonly idempotencyKey: string }
 
 /**
