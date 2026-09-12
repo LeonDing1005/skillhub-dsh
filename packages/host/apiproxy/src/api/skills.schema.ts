@@ -30,7 +30,6 @@ export const skillListValueSchema = z.object({
   skills: z.array(skillEntrySchema),
 }) satisfies z.ZodType<Wire<ResponseValue<'skill.list'>>>
 
-/** Stable Community Skill card; SkillHub-specific fields never enter this schema. */
 const skillCommunityIdentityShape = {
   registryInstanceId: z.string().min(1),
   namespace: z.string().min(1),
@@ -38,6 +37,7 @@ const skillCommunityIdentityShape = {
   version: z.string().min(1),
 }
 
+/** Stable Community Skill card; SkillHub-specific fields never enter this schema. */
 export const skillCommunityEntrySchema = z.object({
   ...skillCommunityIdentityShape,
   title: z.string(),
