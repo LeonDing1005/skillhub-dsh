@@ -1158,10 +1158,15 @@ async function writeReceiptState(packagePath: string, enabled: boolean): Promise
   const current = await readReceipt(packagePath)
   if (current.enabled === enabled) return current
   const receipt: ManagedSkillReceipt = { ...current, enabled }
+  const receiptPath = join(packagePath, RECEIPT_FILE)
   try {
     await chmod(packagePath, 0o700)
-    await writeFileAtomic(join(packagePath, RECEIPT_FILE), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o444, dirMode: 0o700 })
-    await chmod(join(packagePath, RECEIPT_FILE), 0o444)
+    // Windows refuses to replace a read-only target during rename. The receipt
+    // is store-owned and already validated above, so make that exact file
+    // writable before the atomic replacement, then restore its immutable mode.
+    await chmod(receiptPath, 0o600)
+    await writeFileAtomic(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o444, dirMode: 0o700 })
+    await chmod(receiptPath, 0o444)
   } finally {
     await chmod(packagePath, 0o555).catch(() => {})
   }
