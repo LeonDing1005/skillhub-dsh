@@ -222,6 +222,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async list(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { skills: [{ name: 'commit-helper', description: 'Git commits', modelInvocable: true }] } } }
       },
+      async inventoryList(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { items: [] } } }
+      },
       async communityList(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { items: [], labels: [], total: 0, page: 0, pageSize: 12, freshness: 'fresh' as const } } }
       },
@@ -457,6 +460,11 @@ describe('unary round trip (handler ⇄ client, no network)', () => {
     const c = client()
     const skills = await c.skills.list({ sessionId: 's' as never })
     expect(skills.result).toEqual({ ok: true, value: { skills: [{ name: 'commit-helper', description: 'Git commits', modelInvocable: true }] } })
+  })
+
+  it('round-trips skill.inventoryList through the wire form', async () => {
+    const inventory = await client().skills.inventoryList?.({ sessionId: 's' as never })
+    expect(inventory?.result).toEqual({ ok: true, value: { items: [] } })
   })
 
   it('round-trips skill.communityList through the wire form', async () => {

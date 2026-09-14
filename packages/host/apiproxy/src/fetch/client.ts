@@ -44,7 +44,7 @@ import {
   skillCommunityGetValueSchema, skillCommunityListValueSchema, skillListValueSchema,
   skillInstallationListValueSchema, skillInstallationInstallValueSchema,
   skillInstallationUpdateValueSchema, skillInstallationSetEnabledValueSchema,
-  skillInstallationUninstallValueSchema,
+  skillInstallationUninstallValueSchema, skillInventoryListValueSchema,
 } from '../api/skills.schema.ts'
 import {
   agentPresetCopyValueSchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
@@ -135,6 +135,7 @@ export interface IApiClient {
     installationUpdate?(payload: RequestPayload<'skill.installationUpdate'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationUpdate'>>>
     installationSetEnabled?(payload: RequestPayload<'skill.installationSetEnabled'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationSetEnabled'>>>
     installationUninstall?(payload: RequestPayload<'skill.installationUninstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.installationUninstall'>>>
+    inventoryList?(payload: RequestPayload<'skill.inventoryList'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.inventoryList'>>>
   }
   agentPresets: {
     list(payload: RequestPayload<'agentPreset.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'agentPreset.list'>>>
@@ -218,6 +219,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'skill.installationUpdate': skillInstallationUpdateValueSchema,
   'skill.installationSetEnabled': skillInstallationSetEnabledValueSchema,
   'skill.installationUninstall': skillInstallationUninstallValueSchema,
+  'skill.inventoryList': skillInventoryListValueSchema,
   'agentPreset.list': agentPresetListValueSchema,
   'agentPreset.select': agentPresetSelectValueSchema,
   'agentPreset.read': agentPresetReadValueSchema,
@@ -481,6 +483,7 @@ export abstract class AbstractApiClient implements IApiClient {
     installationUpdate: (payload, signal) => this.callUnary('skill.installationUpdate', payload, signal),
     installationSetEnabled: (payload, signal) => this.callUnary('skill.installationSetEnabled', payload, signal),
     installationUninstall: (payload, signal) => this.callUnary('skill.installationUninstall', payload, signal),
+    inventoryList: (payload, signal) => this.callUnary('skill.inventoryList', payload, signal),
   }
 
   // Annotated like every sibling, and load-bearing rather than cosmetic:

@@ -30,7 +30,8 @@ import {
 } from '../src/api/workspace.schema.ts'
 import {
   skillCommunityEntrySchema, skillCommunityListRequestSchema, skillCommunityListValueSchema,
-  skillEntrySchema, skillListRequestSchema, skillListValueSchema,
+  skillEntrySchema, skillInventoryListRequestSchema, skillInventoryListValueSchema,
+  skillListRequestSchema, skillListValueSchema,
 } from '../src/api/skills.schema.ts'
 import {
   agentPresetEntrySchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
@@ -427,6 +428,19 @@ describe('skills domain schemas', () => {
     expect(() => skillEntrySchema.parse({ name: '', description: 'd', modelInvocable: true })).toThrow()
     // modelInvocable is required wire data: an entry without it fails.
     expect(() => skillEntrySchema.parse({ name: 'n', description: 'd' })).toThrow()
+  })
+
+  it('validates the complete inventory projection', () => {
+    expect(skillInventoryListRequestSchema.parse({ sessionId: 's1' })).toEqual({ sessionId: 's1' })
+    expect(skillInventoryListValueSchema.parse({ items: [] })).toEqual({ items: [] })
+    const value = skillInventoryListValueSchema.parse({ items: [{
+      name: 'local-helper', canonicalName: 'local-helper', title: 'Local helper', description: 'd', publisher: 'project-dsh',
+      source: 'project-dsh', provider: 'filesystem', invocation: { modelInvocable: true, userInvocable: true },
+      managed: false, enabled: true, installed: false, resolved: true, resolvedSource: 'filesystem',
+      resolvedPath: 'project-dsh/skills/local-helper/SKILL.md', readOnly: true,
+    }] })
+    expect(value.items[0]?.resolvedPath).toBe('project-dsh/skills/local-helper/SKILL.md')
+    expect(() => skillInventoryListRequestSchema.parse({})).toThrow()
   })
 
   it('validates the normalized Community catalog without upstream fields', () => {

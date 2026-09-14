@@ -59,6 +59,7 @@ export type {
   CommunitySkillListValue, CommunitySkillIdentityPayload, CommunitySkillDetailValue,
   CommunitySkillFileEntry, CommunitySkillVersionEntry, SkillsApi, SkillEntry,
   ManagedSkillInstallationEntry, ManagedSkillInstallationListValue, ManagedSkillInstallationMutationPayload,
+  SkillInventoryEntry, SkillInventoryListPayload, SkillInventoryListValue,
 } from './skills.ts'
 export type { AgentPresetsApi, AgentPresetEntry } from './agent-presets.ts'
 export type { EventsApi, MuxFrame, HostFrame, QueuedInboxItem, ToolCallView, ToolEventView, ToolResultView } from './events.ts'

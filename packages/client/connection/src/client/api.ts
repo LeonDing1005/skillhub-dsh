@@ -13,6 +13,7 @@ export type {
   CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillFileEntry, CommunitySkillIdentityPayload,
   CommunitySkillLabelEntry, CommunitySkillListPayload, CommunitySkillListValue, CommunitySkillVersionEntry,
   ManagedSkillInstallationEntry, ManagedSkillInstallationListValue, ManagedSkillInstallationMutationPayload,
+  SkillInventoryEntry, SkillInventoryListPayload, SkillInventoryListValue,
   SkillsApi, SkillEntry,
   ModelCatalogFailure, ModelCatalogModel, ModelProviderGroup, ModelReasoning,
   ModelReasoningEffort, ModelSelection, QueueAction, QueuedInboxItem, SessionModels,

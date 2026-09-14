@@ -8,6 +8,7 @@ import type { ShellPageId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { SkillCenterPage, type SkillCenterPageProps } from './SkillCenterPage.tsx'
 import { SkillCenterTrigger } from './SkillCenterTrigger.tsx'
 import { en, zh, type SkillCenterKey } from './locales.ts'
@@ -33,14 +34,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 type RouteProps = PropsRuntime<'shell.page'> & PropsLocale<'skillCenter'>
-  & Pick<SkillCenterPageProps, 'load' | 'loadDetail' | 'download' | 'loadInstallations' | 'install' | 'update' | 'setEnabled' | 'uninstall' | 'useInConversation'>
+  & Pick<SkillCenterPageProps, 'load' | 'loadDetail' | 'download' | 'loadInstallations' | 'loadInventory' | 'subscribeInventory' | 'install' | 'update' | 'setEnabled' | 'uninstall' | 'useInConversation'>
 
 function SkillCenterRoute({ pageId, t, ...props }: RouteProps) {
   if (pageId !== SKILL_CENTER_PAGE_ID) return null
   return createElement(SkillCenterPage, { ...props, t })
 }
 
-export const inject = ['slots', 'layout', 'locale', 'connection', 'sessions']
+export const inject = ['slots', 'layout', 'locale', 'connection', 'sessions', 'remote']
 
 /** Register the Skill Center center page and sidebar action. */
 export function apply(ctx: ClientContext): void {
@@ -91,6 +92,22 @@ export function apply(ctx: ClientContext): void {
     if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
     return result.value
   }
+  const loadInventory: NonNullable<SkillCenterPageProps['loadInventory']> = async (signal) => {
+    if (api.skills.inventoryList === undefined) throw new Error('skill inventory RPC unavailable')
+    const snapshot = sessions.list.getSnapshot()
+    const sessionId = snapshot.current
+      ?? snapshot.ids.map(id => snapshot.byId[id]).find(item => item !== undefined && item.origin !== 'subagent' && !item.blank)?.id
+    if (sessionId === undefined) return { items: [] }
+    const { result } = await api.skills.inventoryList({ sessionId }, signal)
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
+    return result.value
+  }
+  const inventoryListeners = new Set<() => void>()
+  ctx.remote.$on('skills/change', () => { for (const listener of inventoryListeners) listener() })
+  const subscribeInventory: NonNullable<SkillCenterPageProps['subscribeInventory']> = (listener) => {
+    inventoryListeners.add(listener)
+    return () => { inventoryListeners.delete(listener) }
+  }
   const install: NonNullable<SkillCenterPageProps['install']> = async (identity) => {
     if (api.skills.installationInstall === undefined) throw new Error('managed installation RPC unavailable')
     const { result } = await api.skills.installationInstall({ ...identity, idempotencyKey: idempotencyKey() })
@@ -119,7 +136,10 @@ export function apply(ctx: ClientContext): void {
     name: 'shell.page',
     id: String(SKILL_CENTER_PAGE_ID),
     locale: NS,
-    inject: () => ({ load, loadDetail, download, loadInstallations, install, update, setEnabled, uninstall, useInConversation }),
+    inject: () => ({
+      load, loadDetail, download, loadInstallations, loadInventory, subscribeInventory,
+      install, update, setEnabled, uninstall, useInConversation,
+    }),
   }, SkillCenterRoute))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',

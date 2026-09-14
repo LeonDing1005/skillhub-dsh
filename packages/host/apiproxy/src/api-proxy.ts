@@ -22,8 +22,9 @@ import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-se
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
+import type { SkillCandidate } from '@deepseek-ai/dsh-skill'
 import { registryInstanceId as managedRegistryInstanceId } from '@deepseek-ai/dsh-skill-installation'
-import type { CommunitySkillIdentity, ManagedInstallationService, ManagedSkillInstallReceipt } from '@deepseek-ai/dsh-skill-installation'
+import type { CommunitySkillIdentity, ManagedInstallationService, ManagedSkillInstallReceipt, ManagedSkillReceipt } from '@deepseek-ai/dsh-skill-installation'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
@@ -43,6 +44,7 @@ import type {
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
   WorkspaceId, WorkspaceView, CommunitySkillIdentityPayload, ManagedSkillInstallationEntry,
+  SkillInventoryEntry,
 } from './api/index.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -136,6 +138,83 @@ function managedInstallationView(receipt: ManagedSkillInstallReceipt): ManagedSk
     enabled: receipt.enabled,
     installedAt: receipt.installedAt,
     fingerprint: receipt.fingerprint,
+  }
+}
+
+function inventoryPath(source: string, path: string | undefined): string | undefined {
+  if (path === undefined) return undefined
+  const normalized = path.replaceAll('\\', '/')
+  const markers: Record<string, string> = {
+    'project-dsh': '/.dsh/skills/',
+    'project-agents': '/.agents/skills/',
+    'user-dsh': '/skills/',
+    'user-agents': '/skills/',
+    custom: '/skills/',
+    bundled: '/skills/',
+  }
+  const marker = markers[source]
+  if (marker !== undefined) {
+    const index = normalized.lastIndexOf(marker)
+    if (index >= 0) return normalized.slice(index + 1)
+  }
+  const name = normalized.split('/').at(-1)
+  return name === undefined || name === '' ? undefined : `${source}/${name}`
+}
+
+function inventoryRow(
+  candidate: SkillCandidate,
+  resolved: SkillCandidate | undefined,
+  managedReceipt: ManagedSkillReceipt | undefined,
+): SkillInventoryEntry {
+  const managed = candidate.provider === 'managed'
+  const receipt = managed ? managedReceipt : undefined
+  const resolvedKey = resolved === undefined ? undefined : `${resolved.provider}\0${resolved.source}\0${resolved.path ?? ''}`
+  const candidateKey = `${candidate.provider}\0${candidate.source}\0${candidate.path ?? ''}`
+  const displayPath = managed ? undefined : inventoryPath(candidate.source, candidate.path)
+  return {
+    ...(receipt === undefined ? {} : {
+      registryInstanceId: String(receipt.identity.registryInstanceId),
+      namespace: receipt.identity.namespace,
+      slug: receipt.identity.slug,
+      version: receipt.version,
+    }),
+    name: candidate.name,
+    canonicalName: candidate.name,
+    title: candidate.name,
+    description: candidate.description,
+    publisher: managed ? 'SkillHub' : candidate.source,
+    source: managed ? 'managed' : candidate.source,
+    provider: candidate.provider,
+    invocation: { ...candidate.invocation },
+    managed,
+    enabled: receipt?.enabled ?? true,
+    installed: managed,
+    resolved: candidateKey === resolvedKey,
+    ...(resolved === undefined ? {} : { resolvedSource: resolved.provider }),
+    ...(displayPath === undefined ? {} : { resolvedPath: displayPath }),
+    readOnly: !managed,
+  }
+}
+
+function managedInventoryRow(receipt: ManagedSkillReceipt): SkillInventoryEntry {
+  return {
+    registryInstanceId: String(receipt.identity.registryInstanceId),
+    namespace: receipt.identity.namespace,
+    slug: receipt.identity.slug,
+    version: receipt.version,
+    name: receipt.canonicalName,
+    canonicalName: receipt.canonicalName,
+    title: receipt.canonicalName,
+    description: 'Managed Skill installation',
+    publisher: 'SkillHub',
+    source: 'managed',
+    provider: 'managed',
+    invocation: { modelInvocable: receipt.enabled, userInvocable: receipt.enabled },
+    managed: true,
+    enabled: receipt.enabled,
+    installed: true,
+    resolved: false,
+    readOnly: false,
   }
 }
 
@@ -3457,6 +3536,45 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           })
           return { removed: result.removed }
         })
+      },
+      async inventoryList(request, signal) {
+        const { sessionId } = request.payload
+        const session = ctx.sessions.get(sessionId)
+        if (session === undefined) {
+          return err(request, { code: 'session-not-found', message: `session "${sessionId}" not found (not attached)`, details: { sessionId } })
+        }
+        if (session.header.cwd === undefined) {
+          return err(request, { code: 'internal', message: `session "${sessionId}" has no project cwd`, details: {} })
+        }
+        const live = ctx.agents.get(sessionId)
+        const presets = ctx.get('agentPresets')
+        const scoped = live === undefined ? undefined : presets?.serviceFor(live, 'skills')
+        const skillRegistry = scoped ?? ctx.get('skills')
+        if (skillRegistry === undefined) {
+          return err(request, { code: 'internal', message: 'skill registry is absent', details: {} })
+        }
+        const scope = await presenterScopeFor(sessionId, session)
+        try {
+          const [all, resolved, receipts] = await Promise.all([
+            skillRegistry.inventory({ cwd: session.header.cwd, scope, signal }),
+            skillRegistry.candidates({ cwd: session.header.cwd, scope, signal }),
+            ctx.get('managedInstallation')?.listReceipts() ?? Promise.resolve([]),
+          ])
+          const resolvedByName = new Map(resolved.map(candidate => [candidate.name, candidate]))
+          const receiptsByName = new Map(receipts.map(receipt => [receipt.canonicalName, receipt]))
+          const rows = all.map(candidate => inventoryRow(candidate, resolvedByName.get(candidate.name), receiptsByName.get(candidate.name)))
+          const representedManaged = new Set(rows.filter(row => row.managed).map(row => row.name))
+          for (const receipt of receipts) {
+            if (!representedManaged.has(receipt.canonicalName)) rows.push(managedInventoryRow(receipt))
+          }
+          rows.sort((left, right) => left.name.localeCompare(right.name)
+            || left.source.localeCompare(right.source)
+            || left.provider.localeCompare(right.provider))
+          return ok(request, { items: rows })
+        } catch (error: unknown) {
+          if (signal?.aborted === true) return err(request, { code: 'cancelled', message: 'Skill inventory request was aborted', details: {} })
+          return err(request, { code: 'internal', message: `Skill inventory listing failed: ${String(error)}`, details: {} })
+        }
       },
     },
 

@@ -47,7 +47,7 @@ import {
   skillCommunityGetRequestSchema, skillCommunityListRequestSchema, skillListRequestSchema,
   skillInstallationListRequestSchema, skillInstallationInstallRequestSchema,
   skillInstallationUpdateRequestSchema, skillInstallationSetEnabledRequestSchema,
-  skillInstallationUninstallRequestSchema,
+  skillInstallationUninstallRequestSchema, skillInventoryListRequestSchema,
 } from '../api/skills.schema.ts'
 import {
   agentPresetCopyRequestSchema, agentPresetListRequestSchema, agentPresetOpenDocumentRequestSchema,
@@ -129,6 +129,7 @@ const UNARY_ROUTES: UnaryRoutes = {
   'skill.installationUpdate': { schema: skillInstallationUpdateRequestSchema, invoke: (api, r, signal) => api.skills.installationUpdate?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
   'skill.installationSetEnabled': { schema: skillInstallationSetEnabledRequestSchema, invoke: (api, r, signal) => api.skills.installationSetEnabled?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
   'skill.installationUninstall': { schema: skillInstallationUninstallRequestSchema, invoke: (api, r, signal) => api.skills.installationUninstall?.(r, signal) ?? Promise.reject(new Error('managed installation RPC unavailable')) },
+  'skill.inventoryList': { schema: skillInventoryListRequestSchema, invoke: (api, r, signal) => api.skills.inventoryList?.(r, signal) ?? Promise.reject(new Error('skill inventory RPC unavailable')) },
   'agentPreset.list': { schema: agentPresetListRequestSchema, invoke: (api, r) => api.agentPresets.list(r) },
   'agentPreset.select': { schema: agentPresetSelectRequestSchema, invoke: (api, r) => api.agentPresets.select(r) },
   'agentPreset.read': { schema: agentPresetReadRequestSchema, invoke: (api, r) => api.agentPresets.read(r) },

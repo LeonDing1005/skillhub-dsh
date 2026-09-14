@@ -1538,6 +1538,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'all sorted winning summaries.',
       },
       {
+        signature: 'async inventory(options: SkillViewOptions = {}): Promise<SkillCandidate[]>',
+        description: 'List every candidate contributed by the selected scope chain, including candidates shadowed by a higher-priority provider. This is a host-only inventory seam; consumers must project candidates before crossing a wire.',
+        parameters: [{ name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers and `cwd` selects project roots.' }],
+        returns: 'all discovered candidates sorted by name and deterministic provider precedence.',
+      },
+      {
+        signature: 'async candidates(options: SkillViewOptions = {}): Promise<SkillCandidate[]>',
+        description: 'List the winning candidates while retaining provider and local path facts.',
+        parameters: [{ name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers and `cwd` selects project roots.' }],
+        returns: 'winning candidates in the same name order as {@link list}.',
+      },
+      {
         signature: 'async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>',
         description: 'Observe the current invocation-neutral catalog and whether discovery completed within a stable revision. Incomplete observations are never cached, allowing consumers to retain last-good state and retry on their next request boundary.',
         parameters: [{ name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers, `cwd` selects project roots, and `signal` cancels discovery.' }],
