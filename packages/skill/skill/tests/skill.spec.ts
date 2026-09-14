@@ -63,20 +63,27 @@ describe('SkillRegistry registry', () => {
     await ctx.plugin(SkillRegistry)
     registerProvider(ctx, new MemoryProvider([
       { ...memorySkill('same-name', 'lower', 20), path: '/workspace/.agents/skills/same-name/SKILL.md' },
+      memorySkill('same-name', 'lower without path', 20),
     ]))
     ctx.skills.registerProvider(() => ({
       name: 'higher',
       async list() {
-        return [{ ...memorySkill('same-name', 'higher', 10), provider: 'higher', source: 'custom', path: '/custom/same-name/SKILL.md' }]
+        return [
+          { ...memorySkill('same-name', 'higher', 10), provider: 'higher', source: 'custom', path: '/custom/same-name/SKILL.md' },
+          { ...memorySkill('other-name', 'other', 10), provider: 'higher', source: 'custom', path: '/custom/other-name/SKILL.md' },
+        ]
       },
       async get(candidate) { return { ...candidate, content: 'body' } },
     }))
 
     await expect(ctx.skills.inventory()).resolves.toEqual([
+      expect.objectContaining({ name: 'other-name', provider: 'higher', path: '/custom/other-name/SKILL.md' }),
       expect.objectContaining({ name: 'same-name', provider: 'higher', path: '/custom/same-name/SKILL.md' }),
+      expect.objectContaining({ name: 'same-name', provider: 'memory' }),
       expect.objectContaining({ name: 'same-name', provider: 'memory', path: '/workspace/.agents/skills/same-name/SKILL.md' }),
     ])
     await expect(ctx.skills.candidates()).resolves.toEqual([
+      expect.objectContaining({ name: 'other-name', provider: 'higher' }),
       expect.objectContaining({ name: 'same-name', provider: 'higher' }),
     ])
   })
