@@ -39,12 +39,13 @@ async function bench() {
   ctx.provide('layout', layout as never)
   ctx.provide('sessions', sessions as never)
   ctx.provide('connection', { api: { skills: { communityList, communityGet } } } as never)
+  ctx.provide('remote', { $on: vi.fn(() => () => {}) } as never)
   return { ctx, slots, locale, layout, sessions, communityList, communityGet }
 }
 
 describe('ui-skill-center apply', () => {
   it('declares the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'locale', 'connection', 'sessions'])
+    expect(inject).toEqual(['slots', 'layout', 'locale', 'connection', 'sessions', 'remote'])
   })
 
   it('keeps the node half inert because behavior runs in the browser graph', () => {

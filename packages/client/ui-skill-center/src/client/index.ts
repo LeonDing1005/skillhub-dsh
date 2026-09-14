@@ -41,7 +41,7 @@ function SkillCenterRoute({ pageId, t, ...props }: RouteProps) {
   return createElement(SkillCenterPage, { ...props, t })
 }
 
-export const inject = ['slots', 'layout', 'locale', 'connection', 'sessions']
+export const inject = ['slots', 'layout', 'locale', 'connection', 'sessions', 'remote']
 
 /** Register the Skill Center center page and sidebar action. */
 export function apply(ctx: ClientContext): void {
