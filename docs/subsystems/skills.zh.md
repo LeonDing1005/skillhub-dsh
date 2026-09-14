@@ -332,6 +332,22 @@ register(skill: SkillRegistration): () => void
 async list(options: SkillViewOptions = {}): Promise<SkillSummary[]>
 
 /**
+ * List every candidate contributed by the selected scope chain, including
+ * candidates shadowed by a higher-priority provider. This is a host-only
+ * inventory seam; consumers must project candidates before crossing a wire.
+ * @param options - view options; `scope` selects the viewing agent's layers and `cwd` selects project roots.
+ * @returns all discovered candidates sorted by name and deterministic provider precedence.
+ */
+async inventory(options: SkillViewOptions = {}): Promise<SkillCandidate[]>
+
+/**
+ * List the winning candidates while retaining provider and local path facts.
+ * @param options - view options; `scope` selects the viewing agent's layers and `cwd` selects project roots.
+ * @returns winning candidates in the same name order as {@link list}.
+ */
+async candidates(options: SkillViewOptions = {}): Promise<SkillCandidate[]>
+
+/**
  * Observe the current invocation-neutral catalog and whether discovery completed within a stable revision.
  * Incomplete observations are never cached, allowing consumers to retain last-good state and
  * retry on their next request boundary.
@@ -352,7 +368,7 @@ async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>
 async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>
 ```
 
-Source: [`packages/skill/skill/src/index.ts:357`](../../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:356`](../../packages/skill/skill/src/index.ts)
 
 <a id="skills-events"></a>
 
@@ -375,5 +391,5 @@ A skill provider, runtime contribution, or provider-backed catalog may have chan
 'skills/change'(): void
 ```
 
-Source: [`packages/skill/skill/src/index.ts:297`](../../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:296`](../../packages/skill/skill/src/index.ts)
 <!-- END GENERATED cordis-surface -->

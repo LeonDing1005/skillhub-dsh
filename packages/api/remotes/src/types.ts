@@ -9,6 +9,7 @@
  * @module @deepseek-ai/dsh-api-remotes/types
  */
 
+import type {} from '@deepseek-ai/dsh-skill/types'
 import type { API_REMOTE_FORWARDED_EVENTS } from './remote-events.ts'
 
 /** Type projection of the allowlist; the consumer and the Host read this one. */

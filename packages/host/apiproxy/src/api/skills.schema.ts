@@ -10,6 +10,7 @@ import { sessionIdSchema } from './sessions.schema.ts'
 import type {
   CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillFileEntry,
   CommunitySkillIdentityPayload, CommunitySkillLabelEntry, CommunitySkillVersionEntry, SkillEntry,
+  SkillInventoryEntry,
 } from './skills.ts'
 
 /** SkillEntry row of skill.list. */
@@ -140,3 +141,29 @@ export const skillInstallationSetEnabledValueSchema = managedInstallationEntrySc
 export const skillInstallationUninstallRequestSchema = skillInstallationMutationSchema satisfies z.ZodType<Wire<RequestPayload<'skill.installationUninstall'>>>
 /** skill.installationUninstall response value. */
 export const skillInstallationUninstallValueSchema = z.object({ removed: z.boolean() }) satisfies z.ZodType<Wire<ResponseValue<'skill.installationUninstall'>>>
+
+const skillInventoryEntrySchema = z.object({
+  registryInstanceId: z.string().optional(),
+  namespace: z.string().optional(),
+  slug: z.string().optional(),
+  version: z.string().optional(),
+  name: z.string().min(1),
+  canonicalName: z.string().min(1),
+  title: z.string(),
+  description: z.string(),
+  publisher: z.string(),
+  source: z.string().min(1),
+  provider: z.string().min(1),
+  invocation: z.object({ modelInvocable: z.boolean(), userInvocable: z.boolean() }),
+  managed: z.boolean(),
+  enabled: z.boolean(),
+  installed: z.boolean(),
+  resolved: z.boolean(),
+  resolvedSource: z.string().optional(),
+  resolvedPath: z.string().optional(),
+  readOnly: z.boolean(),
+}) satisfies z.ZodType<Wire<SkillInventoryEntry>>
+/** skill.inventoryList request payload. */
+export const skillInventoryListRequestSchema = z.object({ sessionId: sessionIdSchema }) satisfies z.ZodType<Wire<RequestPayload<'skill.inventoryList'>>>
+/** skill.inventoryList response value. */
+export const skillInventoryListValueSchema = z.object({ items: z.array(skillInventoryEntrySchema) }) satisfies z.ZodType<Wire<ResponseValue<'skill.inventoryList'>>>

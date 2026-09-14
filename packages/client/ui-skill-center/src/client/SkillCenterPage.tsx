@@ -8,6 +8,7 @@ import type { CommunitySkillListPayload, CommunitySkillListValue } from '@deepse
 import type {
   CommunitySkillDetailValue, CommunitySkillEntry, CommunitySkillIdentityPayload,
   ManagedSkillInstallationEntry, ManagedSkillInstallationListValue,
+  SkillInventoryEntry, SkillInventoryListValue,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SkillCenterKey } from './locales.ts'
 import { SkillDetailDialog } from './SkillDetailDialog.tsx'
@@ -23,6 +24,8 @@ export interface SkillCenterPageProps {
   readonly loadDetail?: (identity: CommunitySkillIdentityPayload, signal: AbortSignal) => Promise<CommunitySkillDetailValue>
   readonly download?: (identity: CommunitySkillIdentityPayload) => Promise<void>
   readonly loadInstallations?: (signal: AbortSignal) => Promise<ManagedSkillInstallationListValue>
+  readonly loadInventory?: (signal: AbortSignal) => Promise<SkillInventoryListValue>
+  readonly subscribeInventory?: (listener: () => void) => () => void
   readonly install?: (identity: CommunitySkillIdentityPayload) => Promise<ManagedSkillInstallationEntry>
   readonly update?: (identity: CommunitySkillIdentityPayload, fromVersion: string) => Promise<ManagedSkillInstallationEntry>
   readonly setEnabled?: (identity: CommunitySkillIdentityPayload, enabled: boolean) => Promise<ManagedSkillInstallationEntry>
@@ -46,9 +49,15 @@ type InstallationState =
   | { readonly status: 'failure' }
   | { readonly status: 'ready'; readonly items: readonly ManagedSkillInstallationEntry[] }
 
+type InventoryState =
+  | { readonly status: 'loading' }
+  | { readonly status: 'failure' }
+  | { readonly status: 'ready'; readonly items: readonly SkillInventoryEntry[] }
+
 /** Render Community Skills discovery and the managed Personal Skill Inventory. */
 export function SkillCenterPage({
-  load, loadDetail, download, loadInstallations, install, update, setEnabled, uninstall, useInConversation, t,
+  load, loadDetail, download, loadInstallations, loadInventory, subscribeInventory,
+  install, update, setEnabled, uninstall, useInConversation, t,
 }: SkillCenterPageProps) {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
@@ -60,6 +69,10 @@ export function SkillCenterPage({
   const [tab, setTab] = useState<'community' | 'mine'>('community')
   const [installations, setInstallations] = useState<InstallationState>({ status: 'loading' })
   const [installationAttempt, setInstallationAttempt] = useState(0)
+  const [inventory, setInventory] = useState<InventoryState>({ status: 'loading' })
+  const [inventoryAttempt, setInventoryAttempt] = useState(0)
+  const [inventorySearch, setInventorySearch] = useState('')
+  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'installed'>('all')
   const generation = useRef(0)
   const nextController = useRef<AbortController>()
   const keepCardsForRetry = useRef(false)
@@ -75,6 +88,19 @@ export function SkillCenterPage({
     )
     return () => { abort.abort() }
   }, [installationAttempt, loadInstallations])
+
+  useEffect(() => {
+    if (loadInventory === undefined) return
+    const abort = new AbortController()
+    setInventory({ status: 'loading' })
+    loadInventory(abort.signal).then(
+      (value) => { if (!abort.signal.aborted) setInventory({ status: 'ready', items: value.items }) },
+      () => { if (!abort.signal.aborted) setInventory({ status: 'failure' }) },
+    )
+    return () => { abort.abort() }
+  }, [inventoryAttempt, loadInventory])
+
+  useEffect(() => subscribeInventory?.(() => { setInventoryAttempt(value => value + 1) }), [subscribeInventory])
 
   const refreshInstallations = useCallback(() => { setInstallationAttempt(value => value + 1) }, [])
 
@@ -175,7 +201,20 @@ export function SkillCenterPage({
         </div>
       </header>
       <section className={css.content}>
-        {tab === 'mine' && canManage && (
+        {tab === 'mine' && canManage && loadInventory !== undefined && (
+          <InventorySkills
+            state={inventory}
+            search={inventorySearch}
+            filter={inventoryFilter}
+            onSearch={setInventorySearch}
+            onFilter={setInventoryFilter}
+            setEnabled={setEnabled}
+            uninstall={uninstall}
+            onChanged={() => { refreshInstallations(); setInventoryAttempt(value => value + 1) }}
+            t={t}
+          />
+        )}
+        {tab === 'mine' && canManage && loadInventory === undefined && (
           <ManagedSkills
             state={installations}
             setEnabled={setEnabled}
@@ -327,6 +366,91 @@ function ManagedSkills({
       {state.items.map(item => <ManagedSkillCard key={`${item.registryInstanceId}:${item.namespace}/${item.slug}@${item.version}`} item={item} setEnabled={setEnabled} uninstall={uninstall} onChanged={onChanged} t={t} />)}
     </div>
   )
+}
+
+function InventorySkills({
+  state, search, filter, onSearch, onFilter, setEnabled, uninstall, onChanged, t,
+}: {
+  readonly state: InventoryState
+  readonly search: string
+  readonly filter: 'all' | 'installed'
+  readonly onSearch: (value: string) => void
+  readonly onFilter: (value: 'all' | 'installed') => void
+  readonly setEnabled: NonNullable<SkillCenterPageProps['setEnabled']>
+  readonly uninstall: NonNullable<SkillCenterPageProps['uninstall']>
+  readonly onChanged: () => void
+  readonly t: (key: SkillCenterKey) => string
+}) {
+  if (state.status === 'loading') return <div className={css.state} role="status">{t('mine.loading')}</div>
+  if (state.status === 'failure') return <div className={css.state} role="alert">{t('mine.failure')}</div>
+  const normalized = search.trim().toLocaleLowerCase()
+  const items = state.items.filter(item => (filter === 'all' || item.installed) && (
+    normalized === ''
+    || [item.title, item.name, item.description, item.publisher].some(value => value.toLocaleLowerCase().includes(normalized))
+  ))
+  return <>
+    <div className={css.discoveryControls}>
+      <label className={css.search}>
+        <IconSearchOutline16 size={16} />
+        <input
+          type="search"
+          aria-label={t('mine.search.label')}
+          placeholder={t('mine.search.placeholder')}
+          value={search}
+          onChange={(event) => { onSearch(event.currentTarget.value) }}
+        />
+      </label>
+      <select
+        className={css.sort}
+        aria-label={t('mine.filter.label')}
+        value={filter}
+        onChange={(event) => { onFilter(event.currentTarget.value as 'all' | 'installed') }}
+      >
+        <option value="all">{t('mine.filter.all')}</option>
+        <option value="installed">{t('mine.filter.installed')}</option>
+      </select>
+    </div>
+    {items.length === 0 ? <div className={css.state}>{t('mine.empty')}</div> : (
+      <div className={css.grid}>
+        {items.map(item => <InventoryCard key={`${item.name}:${item.source}:${item.provider}:${item.resolvedPath ?? ''}`} item={item} setEnabled={setEnabled} uninstall={uninstall} onChanged={onChanged} t={t} />)}
+      </div>
+    )}
+  </>
+}
+
+function InventoryCard({
+  item, setEnabled, uninstall, onChanged, t,
+}: {
+  readonly item: SkillInventoryEntry
+  readonly setEnabled: NonNullable<SkillCenterPageProps['setEnabled']>
+  readonly uninstall: NonNullable<SkillCenterPageProps['uninstall']>
+  readonly onChanged: () => void
+  readonly t: (key: SkillCenterKey) => string
+}) {
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const identity = item.registryInstanceId === undefined || item.namespace === undefined
+    || item.slug === undefined || item.version === undefined
+    ? undefined
+    : { registryInstanceId: item.registryInstanceId, namespace: item.namespace, slug: item.slug, version: item.version }
+  const mutate = async (operation: () => Promise<unknown>) => {
+    setBusy(true); setFailed(false)
+    try { await operation(); onChanged() } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  return <article className={css.card}>
+    <div className={css.cardTop}><div className={css.skillIcon}><IconSkillOutline16 size={20} /></div><span className={item.resolved ? css.enabledBadge : css.disabledBadge}>{item.resolved ? t('mine.resolved') : t('mine.notResolved')}</span></div>
+    <div className={css.identity}>{item.source} · {item.provider}</div>
+    <h2>{item.title}</h2>
+    <p className={css.description}>{item.description}</p>
+    <div className={css.publisher}>{item.publisher}{item.resolvedPath === undefined ? '' : ` · ${item.resolvedPath}`}</div>
+    <footer className={css.cardFooter}>
+      {failed && <span className={css.downloadFailure} role="alert">{t('mine.action.failure')}</span>}
+      {!item.readOnly && identity !== undefined && <>
+        <button type="button" disabled={busy} onClick={() => { void mutate(() => setEnabled(identity, !item.enabled)) }}>{item.enabled ? t('mine.disable') : t('mine.enable')}</button>
+        <button type="button" disabled={busy} onClick={() => { void mutate(() => uninstall(identity)) }}>{t('mine.uninstall')}</button>
+      </>}
+    </footer>
+  </article>
 }
 
 function ManagedSkillCard({

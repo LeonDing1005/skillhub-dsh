@@ -58,6 +58,7 @@ export interface RpcMethodMap {
   'skill.installationUpdate': NonNullable<SkillsApi['installationUpdate']>
   'skill.installationSetEnabled': NonNullable<SkillsApi['installationSetEnabled']>
   'skill.installationUninstall': NonNullable<SkillsApi['installationUninstall']>
+  'skill.inventoryList': NonNullable<SkillsApi['inventoryList']>
   'agentPreset.list': AgentPresetsApi['list']
   'agentPreset.select': AgentPresetsApi['select']
   'agentPreset.read': AgentPresetsApi['read']

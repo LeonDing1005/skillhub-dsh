@@ -2,7 +2,7 @@
 /** Deterministic Community Skills catalog states and card projection. */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CommunitySkillListValue, ManagedSkillInstallationEntry } from '@deepseek-ai/dsh-api-remotes/client'
+import type { CommunitySkillListValue, ManagedSkillInstallationEntry, SkillInventoryEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import { SkillCenterPage } from '../src/client/SkillCenterPage.tsx'
 import { en } from '../src/client/locales.ts'
 
@@ -58,6 +58,20 @@ const managed: ManagedSkillInstallationEntry = {
   installedAt: '2026-08-26T01:00:00.000Z',
   fingerprint: 'sha256:abc',
 }
+
+const inventory: SkillInventoryEntry[] = [
+  {
+    name: 'weather-toolkit', canonicalName: 'weather-toolkit', title: 'Weather Toolkit', description: 'Forecasts for a workspace.', publisher: 'Community Publisher',
+    source: 'managed', provider: 'managed', invocation: { modelInvocable: true, userInvocable: true }, managed: true,
+    enabled: true, installed: true, resolved: true, resolvedSource: 'managed', readOnly: false,
+    registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
+  },
+  {
+    name: 'local-helper', canonicalName: 'local-helper', title: 'Local Helper', description: 'Use for local work.', publisher: 'custom', source: 'custom', provider: 'filesystem',
+    invocation: { modelInvocable: true, userInvocable: true }, managed: false, enabled: true, installed: false, resolved: false,
+    resolvedPath: 'custom/local-helper/SKILL.md', readOnly: true,
+  },
+]
 
 afterEach(cleanup)
 
@@ -130,6 +144,28 @@ describe('SkillCenterPage', () => {
     await waitFor(() => { expect(uninstall).toHaveBeenCalledWith({
       registryInstanceId: 'public-main', namespace: 'global', slug: 'weather', version: '1.0.0',
     }) })
+  })
+
+  it('renders the complete inventory and filters by publisher, source, and installed state', async () => {
+    render(
+      <SkillCenterPage
+        load={() => Promise.resolve(page)}
+        loadInstallations={() => Promise.resolve({ items: [managed] })}
+        loadInventory={() => Promise.resolve({ items: inventory })}
+        setEnabled={() => Promise.resolve(managed)}
+        uninstall={() => Promise.resolve({ removed: true })}
+        t={t}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Weather' })
+    fireEvent.click(screen.getByRole('tab', { name: 'My Skills' }))
+    expect(await screen.findByRole('heading', { name: 'Weather Toolkit' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Local Helper' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search My Skills' }), { target: { value: 'publisher' } })
+    expect(await screen.findByRole('heading', { name: 'Weather Toolkit' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Local Helper' })).toBeNull()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter My Skills' }), { target: { value: 'installed' } })
+    expect(screen.getByRole('heading', { name: 'Weather Toolkit' })).toBeTruthy()
   })
 
   it.each(['resolve', 'reject'] as const)('ignores a catalog %s after unmount', async (settlement) => {

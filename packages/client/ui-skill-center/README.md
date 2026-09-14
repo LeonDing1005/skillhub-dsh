@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 Native Skill Center page for the normalized Community Skills catalog. The plugin registers a sidebar footer action and a `shell.page` center surface, preserving the surrounding workspace and Session shell while the catalog is open. Selecting or creating a Session returns to the conversation.
 
+The My Skills view loads a session-addressed Personal Skill Inventory through the Host RPC. It shows managed, local, bundled, and runtime candidates, including shadowed entries, while marking the resolved winner separately from installed state. Unmanaged rows are read-only; lifecycle controls appear only for managed receipts with an immutable identity.
+
 The Community Skills tab is enabled and My Skills loads verified managed installations through the Host lifecycle RPC. Host-executed debounced search, category labels, sorting, and incremental pagination share one request key. Changing search, category, or sort resets pagination. Loading the next page keeps existing cards in place, and a failed next page can be retried without clearing them. Late responses from superseded requests are ignored.
 
 Deterministic loading, empty, failure with retry, stale, unavailable, and populated states share stable wide, medium, and narrow card tracks. A stale response keeps the last successful cards visible with an explicit retry action; an expired result shows the typed unavailable state. Cards show namespace/slug identity, title, description, publisher, exact version, labels, stars, downloads, and the Host-derived New marker; no view count or upstream-only field is rendered.
@@ -26,4 +28,4 @@ None.
 
 ## Known Limitations and Deferred Work
 
-- My Skills currently projects managed installations; local, bundled, and runtime source rows remain Host projection work.
+- Inventory rows are read-only for unmanaged sources; lifecycle controls appear only for managed receipts with an immutable identity.

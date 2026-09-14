@@ -113,6 +113,50 @@ export interface ManagedSkillInstallationListValue { readonly items: readonly Ma
 /** Identity and caller-owned retry key for a lifecycle mutation. */
 export interface ManagedSkillInstallationMutationPayload extends CommunitySkillIdentityPayload { readonly idempotencyKey: string }
 
+/** Browser-safe projection of one Host-resolved or installed Skill source. */
+export interface SkillInventoryEntry {
+  /** Managed identity fields; absent for unmanaged local/runtime rows. */
+  readonly registryInstanceId?: string
+  readonly namespace?: string
+  readonly slug?: string
+  readonly version?: string
+  /** Stable invocation name. */
+  readonly name: string
+  /** Canonical package/skill name used for stable identity across sources. */
+  readonly canonicalName: string
+  /** Display title; local providers use the canonical name. */
+  readonly title: string
+  /** Human-readable description. */
+  readonly description: string
+  /** Publisher label when the source provides one. */
+  readonly publisher: string
+  /** Source bucket such as project, user, custom, bundled, runtime, or managed. */
+  readonly source: string
+  /** Provider identity that owns the candidate. */
+  readonly provider: string
+  /** Invocation policy at the candidate boundary. */
+  readonly invocation: { readonly modelInvocable: boolean; readonly userInvocable: boolean }
+  /** Whether this row belongs to the managed installation store. */
+  readonly managed: boolean
+  /** Whether the managed installation is enabled; unmanaged rows are always true. */
+  readonly enabled: boolean
+  /** Whether a durable managed installation owns this row. */
+  readonly installed: boolean
+  /** Whether this exact row currently wins resolution for the selected context. */
+  readonly resolved: boolean
+  /** Winning source/provider label when the name is currently resolved. */
+  readonly resolvedSource?: string
+  /** Relative, user-facing path for unmanaged local skills only. */
+  readonly resolvedPath?: string
+  /** Whether lifecycle mutation controls are unavailable for this row. */
+  readonly readOnly: boolean
+}
+
+/** Session-addressed request for the complete Skill Inventory projection. */
+export interface SkillInventoryListPayload { readonly sessionId: SessionId }
+/** Complete Host projection of every source visible to the selected context. */
+export interface SkillInventoryListValue { readonly items: readonly SkillInventoryEntry[] }
+
 /**
  * Skill-domain unary methods (the map key skill.* of RpcMethodMap). Listing
  * is the domain's only RPC: invocation itself is a plain `session.prompt`
@@ -137,4 +181,7 @@ export interface SkillsApi {
   Promise<RpcResponse<ManagedSkillInstallationEntry>>
   installationUninstall?(request: RpcRequest<ManagedSkillInstallationMutationPayload>, signal?: AbortSignal):
   Promise<RpcResponse<{ removed: boolean }>>
+  /** Lists all source candidates and the selected-context winner without exposing Host paths. */
+  inventoryList?(request: RpcRequest<SkillInventoryListPayload>, signal?: AbortSignal):
+  Promise<RpcResponse<SkillInventoryListValue>>
 }

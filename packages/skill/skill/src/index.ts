@@ -285,7 +285,6 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     skills: SkillRegistry
   }
-
   interface Events {
     /**
      * A skill provider, runtime contribution, or provider-backed catalog may
@@ -470,6 +469,41 @@ export class SkillRegistry extends Service {
    */
   async list(options: SkillViewOptions = {}): Promise<SkillSummary[]> {
     return (await this.snapshot(options)).skills
+  }
+
+  /**
+   * List every candidate contributed by the selected scope chain, including
+   * candidates shadowed by a higher-priority provider. This is a host-only
+   * inventory seam; consumers must project candidates before crossing a wire.
+   * @param options - view options; `scope` selects the viewing agent's layers and `cwd` selects project roots.
+   * @returns all discovered candidates sorted by name and deterministic provider precedence.
+   */
+  async inventory(options: SkillViewOptions = {}): Promise<SkillCandidate[]> {
+    throwIfAborted(options.signal)
+    const candidates: SkillCandidate[] = []
+    const layers = [this.layers.global, ...this.layers.chainLayers(options.scope)]
+    for (const layer of layers) {
+      const collected = await this.listLayerCandidates(layer, options)
+      candidates.push(...collected.entries.map(entry => entry.candidate))
+    }
+    return candidates.sort((left, right) =>
+      compareCodePoints(left.name, right.name)
+      || left.rank - right.rank
+      || compareCodePoints(left.provider, right.provider)
+      || compareCodePoints(left.path ?? '', right.path ?? ''),
+    )
+  }
+
+  /**
+   * List the winning candidates while retaining provider and local path facts.
+   * @param options - view options; `scope` selects the viewing agent's layers and `cwd` selects project roots.
+   * @returns winning candidates in the same name order as {@link list}.
+   */
+  async candidates(options: SkillViewOptions = {}): Promise<SkillCandidate[]> {
+    const collected = await this.collect(options)
+    return [...collected.entries.values()]
+      .map(entry => entry.candidate)
+      .sort((left, right) => compareCodePoints(left.name, right.name))
   }
 
   /**

@@ -392,6 +392,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SessionTitleProvider: 'session-title.md',
   SessionTitleSnapshot: 'session-title.md',
   SkillCatalogSnapshot: 'skills.md',
+  SkillCandidate: 'skills.md',
   SkillDefinition: 'skills.md',
   SkillLookupOptions: 'skills.md',
   SkillProvider: 'skills.md',

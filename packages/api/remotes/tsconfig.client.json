@@ -49,6 +49,9 @@
       "path": "../../settings/settings"
     },
     {
+      "path": "../../skill/skill"
+    },
+    {
       "path": "../../typert/protocol"
     }
   ]

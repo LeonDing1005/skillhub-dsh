@@ -15,6 +15,8 @@
 - `ctx.skills.registerProvider(create): () => void` 调用同步提供方工厂并向其传入 `{ signal, invalidate }`，随后以在调用方上下文所在层内唯一的 `provider.name` 注册其只读结果。同层重复提供方名称会抛错，`runtime` 为保留名称；注册失败会中止信号。精确的 Cordis disposer 会注销提供方、中止信号，并保持有序组合拆卸。
 - `ctx.skills.snapshot({ cwd?, signal?, scope? })` 返回观察 scope 各层合并后、与调用策略无关的 `{ skills, complete }` 观测。任一提供方调用被拒绝或显式报告发现不完整，或有界重试期间又发生目录修订时，`complete` 为 false；该次观测提供的候选项仍保留在此结果中，但该结果绝不缓存。
 - `ctx.skills.list({ cwd?, signal?, scope? })` 借用只读视图选项，然后返回当前工作区中的全部胜出摘要；这些摘要在全局层与观察 scope 链之间合并，并按名称排序。消费方在自身边界调用 `isModelInvocable(skill)` 或 `isUserInvocable(skill)`。
+- `ctx.skills.inventory({ cwd?, signal?, scope? })` 返回所选 provider 的全部已发现候选，包括被更近 scope 或更高优先级 provider 遮蔽的名称。这是仅供 Host 使用的诊断视图，保留 provider、来源和本地路径信息，不能作为模型目录。
+- `ctx.skills.candidates({ cwd?, signal?, scope? })` 返回胜出候选并保留 provider 与路径信息，供 Host 投影区分解析结果和安装状态。
 - `ctx.skills.get(name, { cwd?, signal?, scope? })` 在发现和加载中使用同一组只读选项和胜出候选项；在发现或缓存命中后重新检查取消，让提供方加载与信号竞速，验证已加载定义，然后无论调用策略如何都将其返回。
 - `ctx.skills.register(skill): () => void` 将只读运行时嵌入式 skill 注册进调用方上下文所在层，省略时添加允许模型和用户调用的策略以及 `provider: "runtime"`。同层同名运行时注册使用先到先得：重复项会记录警告，并获得无操作 disposer。成功注册会返回精确的 Cordis disposer，以供有序组合拆卸。
 
