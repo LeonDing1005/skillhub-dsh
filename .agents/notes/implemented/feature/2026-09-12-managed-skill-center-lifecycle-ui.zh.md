@@ -25,3 +25,4 @@ Status: implemented
 - 只有 Host 暴露相应方法时，浏览器生命周期操作才可用。
 - 精确 registry identity 和生成的幂等键使重试可寻址，同时不暴露 Host 存储细节。
 - 更完整的 Personal Skill Inventory 聚合仍属于 Host 投影职责。
+- 现在，完整的无密钥 Web 流程会通过真实 Host 与浏览器组合覆盖浏览、安全预览、精确安装、会话插入、禁用／启用可见性以及卸载。

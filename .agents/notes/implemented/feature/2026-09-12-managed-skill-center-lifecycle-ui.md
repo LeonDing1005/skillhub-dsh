@@ -25,3 +25,4 @@ The browser sends only safe identity fields and generated idempotency keys. Host
 - Browser lifecycle actions remain available only when the Host exposes the corresponding methods.
 - Exact registry identity and generated idempotency keys make retries addressable without exposing Host storage details.
 - Broader Personal Skill Inventory aggregation remains a Host projection responsibility.
+- The assembled keyless Web flow now covers browse, safe preview, exact installation, conversation insertion, disable/enable visibility, and uninstall through the real Host and browser composition.
