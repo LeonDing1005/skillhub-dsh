@@ -1,5 +1,5 @@
 /** Web assembly coverage for the native Skill Center route and layout snapshots. */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
@@ -12,10 +12,17 @@ import pixelmatch from 'pixelmatch'
 import { PNG } from 'pngjs'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import {
+  apply as applyManagedProvider,
+  computeSkillHubFingerprint,
+  ManagedInstallationService,
+  registryInstanceId,
+  type ManagedSkillRelease,
+} from '@deepseek-ai/dsh-skill-installation'
+import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold,
   watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/skill-center', import.meta.url))
 const CATALOG_EXPECTED = join(SNAPSHOT_DIR, 'catalog.expected.md')
@@ -72,6 +79,19 @@ describe('web e2e: Skill Center', () => {
   const listRequests: URL[] = []
   const downloadRequests: string[] = []
   let expectedZipBytes: Buffer
+  const managedSourceServer = 'https://registry.internal.test'
+  const managedCredential = 'fixture-secret-token'
+  let managedRoot: string | undefined
+
+  async function makeManagedStoreWritable(path: string): Promise<void> {
+    const info = await lstat(path)
+    if (info.isDirectory()) {
+      for (const entry of await readdir(path)) await makeManagedStoreWritable(join(path, entry))
+      await chmod(path, 0o700)
+    } else {
+      await chmod(path, 0o600)
+    }
+  }
 
   beforeAll(async () => {
     const pageFixture = JSON.parse(await readFile(join(RESPONSE_FIXTURE_DIR, 'skills-page.json'), 'utf8')) as {
@@ -205,11 +225,45 @@ describe('web e2e: Skill Center', () => {
         rateLimitBackoffMs: 1,
       },
     })
+    const managedSkillBytes = strToU8([
+      '---',
+      'name: weather-toolkit',
+      'description: Retrieve deterministic weather forecasts for the assembled lifecycle test.',
+      '---',
+      '',
+      'Use the weather toolkit when the user asks for a forecast.',
+      '',
+    ].join('\n'))
+    const managedManifest = [{
+      path: 'SKILL.md',
+      size: managedSkillBytes.byteLength,
+      sha256: createHash('sha256').update(managedSkillBytes).digest('hex'),
+    }]
+    const managedRelease: ManagedSkillRelease = {
+      identity: { registryInstanceId: registryInstanceId('public-skillhub'), namespace: 'global', slug: 'weather' },
+      adapter: 'skillhub',
+      sourceServer: `${managedSourceServer}/${managedCredential}`,
+      canonicalName: 'weather-toolkit',
+      version: '1.0.0',
+      manifest: managedManifest,
+      fingerprint: computeSkillHubFingerprint(managedManifest),
+      artifact: Buffer.from(zipSync({ 'SKILL.md': managedSkillBytes })),
+    }
+    const managedInstallation = new ManagedInstallationService({
+      root: join(scaffold.workspaceCwd, '.managed-installation'),
+      limits: { maxCompressedBytes: 1_000_000, maxExpandedBytes: 1_000_000, maxEntryCount: 10 },
+      resolver: { resolve: async () => managedRelease },
+    })
+    managedRoot = join(scaffold.workspaceCwd, '.managed-installation')
+    await managedInstallation.recover()
+    scaffold.ctx.provide('managedInstallation', managedInstallation)
+    applyManagedProvider(scaffold.ctx, managedInstallation)
     browser = await chromium.launch()
   }, 120_000)
 
   afterAll(async () => {
     await browser?.close()
+    if (managedRoot !== undefined) await makeManagedStoreWritable(managedRoot)
     await scaffold?.close()
     await new Promise<void>((resolve, reject) => {
       if (!skillHub?.listening) { resolve(); return }
@@ -222,6 +276,7 @@ describe('web e2e: Skill Center', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-skill-center'))
     const tripwire = watchConsole(page)
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
+    await connectFreshWorkspace(page, scaffold.workspaceCwd)
     await page.getByRole('button', { name: 'Skill Center' }).click()
     await page.getByRole('heading', { name: 'Weather' }).waitFor({ timeout: 15_000 })
 
@@ -257,6 +312,100 @@ describe('web e2e: Skill Center', () => {
     expect(tripwire.pageErrors).toEqual([])
     await page.close()
   }, 60_000)
+
+  it('runs the assembled managed lifecycle through the Web surface without leaking Host details', async () => {
+    const page = await browser.newPage({ viewport: { width: 1357, height: 638 }, locale: 'en-US' })
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-skill-center-managed-lifecycle'))
+    const tripwire = watchConsole(page)
+    const lifecyclePayloads: Promise<string>[] = []
+    page.on('response', (response) => {
+      if (!new URL(response.url()).pathname.includes('/api/skill.installation')) return
+      lifecyclePayloads.push(response.text().catch((error: unknown) => {
+        console.warn(`managed lifecycle response could not be read: ${String(error)}`)
+        return ''
+      }))
+    })
+    await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
+    await page.getByRole('button', { name: 'Skill Center' }).click()
+    await page.getByRole('heading', { name: 'Weather' }).waitFor({ timeout: 15_000 })
+
+    const detail = page.getByRole('button', { name: /View details for weather/i })
+    await detail.click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('heading', { name: 'weather-toolkit' }).waitFor({ timeout: 15_000 })
+    expect(await dialog.locator('iframe').count()).toBe(0)
+    expect(await dialog.locator('[src*="example.test"], [href*="example.test"]').count()).toBe(0)
+    const previewText = await page.locator('body').innerText()
+    expect(previewText).not.toContain(managedSourceServer)
+    expect(previewText).not.toContain(managedCredential)
+    expect(previewText).not.toContain(scaffold.workspaceCwd)
+
+    const assertCatalogSuggestion = async (expectedCount: number): Promise<void> => {
+      const catalogPage = await browser.newPage({ viewport: { width: 1357, height: 638 }, locale: 'en-US' })
+      try {
+        await catalogPage.goto(scaffold.baseUrl, { waitUntil: 'load' })
+        const readyComposer = catalogPage.locator('textarea:enabled[placeholder="Describe what you want to build"]')
+        if (await readyComposer.count() === 0) await connectFreshWorkspace(catalogPage, scaffold.workspaceCwd)
+        const composer = catalogPage.locator('textarea:enabled').last()
+        await composer.waitFor()
+        await composer.fill('/weather-toolkit')
+        const suggestions = catalogPage.getByRole('listbox', { name: 'Trigger suggestions' })
+        await expect.poll(() => suggestions.getByRole('option', { name: /weather-toolkit/ }).count(), { timeout: 10_000 }).toBe(expectedCount)
+      } finally {
+        await catalogPage.close()
+      }
+    }
+
+    await dialog.getByRole('button', { name: 'Install to My Skills' }).click()
+    const confirmation = dialog.getByRole('group', { name: 'Install this managed skill?' })
+    await confirmation.getByRole('button', { name: 'Confirm' }).click()
+    await dialog.getByRole('button', { name: 'Disable' }).waitFor({ timeout: 15_000 })
+    await dialog.getByRole('button', { name: 'Use in conversation' }).waitFor()
+
+    await dialog.getByRole('button', { name: 'Use in conversation' }).click()
+    expect((await scaffold.ctx.skills.list()).map(skill => skill.name)).toContain('weather-toolkit')
+    const insertedComposer = page.locator('textarea:enabled').last()
+    await insertedComposer.waitFor()
+    expect(await insertedComposer.inputValue()).toBe('/weather-toolkit ')
+    // The browser catalog is session-cached; a new page clears that cache and
+    // re-reads the current Host catalog after installation.
+    await assertCatalogSuggestion(1)
+
+    await page.getByRole('button', { name: 'Skill Center' }).click()
+    await page.getByRole('heading', { name: 'Weather' }).waitFor({ timeout: 15_000 })
+    await page.getByRole('button', { name: /View details for weather/i }).click()
+    const disabledDialog = page.getByRole('dialog')
+    await disabledDialog.getByRole('button', { name: 'Disable' }).click()
+    await disabledDialog.getByRole('button', { name: 'Enable' }).waitFor({ timeout: 15_000 })
+    expect(await disabledDialog.getByRole('button', { name: 'Use in conversation' }).count()).toBe(0)
+    await disabledDialog.getByRole('button', { name: 'Cancel' }).click()
+    await assertCatalogSuggestion(0)
+
+    await page.getByRole('button', { name: 'Skill Center' }).click()
+    await page.getByRole('heading', { name: 'Weather' }).waitFor({ timeout: 15_000 })
+    await page.getByRole('button', { name: /View details for weather/i }).click()
+    const enabledDialog = page.getByRole('dialog')
+    await enabledDialog.getByRole('button', { name: 'Enable' }).click()
+    await enabledDialog.getByRole('button', { name: 'Use in conversation' }).waitFor({ timeout: 15_000 })
+    await assertCatalogSuggestion(1)
+    await enabledDialog.getByRole('button', { name: 'Uninstall' }).click()
+    await enabledDialog.getByRole('button', { name: 'Install to My Skills' }).waitFor({ timeout: 15_000 })
+    expect(await enabledDialog.getByRole('button', { name: 'Use in conversation' }).count()).toBe(0)
+    await enabledDialog.getByRole('button', { name: 'Cancel' }).click()
+    await page.getByRole('tab', { name: 'My Skills' }).click()
+    await page.getByText('No managed skills installed').waitFor({ timeout: 15_000 })
+
+    const payloads = await Promise.all(lifecyclePayloads)
+    for (const payload of payloads) {
+      expect(payload).not.toContain(managedSourceServer)
+      expect(payload).not.toContain(managedCredential)
+      expect(payload).not.toContain(scaffold.workspaceCwd)
+    }
+
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+    await page.close()
+  }, 90_000)
 
   it('recovers discovery across filtering, pagination, cancellation, rate limits, and stale cache', async () => {
     const page = await browser.newPage({ viewport: { width: 1357, height: 638 }, locale: 'en-US' })
